@@ -1,100 +1,179 @@
-from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
-from qdrant_client.http import models
-import uuid
-from qdrant_client.http.models import PointStruct
-import re
+"""Utilities for FAQ indexing and semantic retrieval with Qdrant.
 
-# --- 1. CONFIGURATION ET MODÈLES (Accessibles par l'import) ---
+Ce module centralise l'indexation FAQ et la recherche sémantique.
+Этот модуль централизует индексацию FAQ и семантический поиск.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import uuid
+from pathlib import Path
+from typing import Any, Dict, List
+
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+from qdrant_client.http.models import PointStruct
+from sentence_transformers import SentenceTransformer
+
+LOGGER = logging.getLogger(__name__)
+
+# Configuration Qdrant / Embedding
+# Configuration de la connexion Qdrant et du modèle d'embedding.
+# Конфигурация подключения к Qdrant и модели эмбеддингов.
 client = QdrantClient(host="localhost", port=6333, timeout=60)
 model = SentenceTransformer("Qwen/Qwen3-Embedding-0.6B", trust_remote_code=True)
 collection_name = "FAQ_Multilingue"
 
-# --- 2. DÉFINITIONS DES FONCTIONS DE TRAITEMENT ---
 
-def charger_et_decouper_faq(chemin_du_fichier):
-    with open(chemin_du_fichier, 'r', encoding='utf-8') as f:
-        texte_a_vectoriser = f.read()
-    blocs = re.split(r'\n(?=Q-)', texte_a_vectoriser)
-    return [bloc.strip() for bloc in blocs if bloc.strip()]
+def load_and_split_faq(file_path: str) -> List[str]:
+    """Load FAQ file and split it into Q/R blocks.
 
-def structurer_bloc(bloc):
-    match_q = re.search(r'Q-"(.*?)"', bloc)
-    match_r = re.search(r'R-(.*)', bloc, re.DOTALL)
+    FR: Charge le fichier FAQ et découpe les blocs basés sur le préfixe `Q-`.
+    RU: Загружает FAQ-файл и разбивает его на блоки по префиксу `Q-`.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"FAQ file not found: {path}")
+
+    with path.open("r", encoding="utf-8") as file:
+        text_to_vectorize = file.read()
+
+    blocks = re.split(r"\n(?=Q-)", text_to_vectorize)
+    return [block.strip() for block in blocks if block.strip()]
+
+
+def parse_faq_block(block: str) -> Dict[str, str]:
+    """Extract structured fields from a single FAQ block.
+
+    FR: Extrait question/réponse d'un bloc texte FAQ brut.
+    RU: Извлекает вопрос/ответ из сырого текстового FAQ-блока.
+    """
+    question_match = re.search(r'Q-"(.*?)"', block)
+    answer_match = re.search(r"R-(.*)", block, re.DOTALL)
+
     return {
-        "texte_a_vectoriser": bloc,
-        "question": match_q.group(1) if match_q else "",
-        "reponse": match_r.group(1).strip() if match_r else ""
+        "text_to_vectorize": block,
+        "question": question_match.group(1) if question_match else "",
+        "answer": answer_match.group(1).strip() if answer_match else "",
     }
 
 
-def generer_points_avec_uuid(liste_faq, modele_embedding, nom_du_fichier_source):
-    points = []
-    for item in liste_faq:
-        id_unique = str(uuid.uuid4())
-         # On combine tout pour que l'IA "comprenne" le bloc entier
-        texte_a_vectoriser = f"Question: {item['question']} Réponse: {item['reponse']}"
-        vecteur = modele_embedding.encode(texte_a_vectoriser).tolist()
-        points.append(PointStruct(
-            id=id_unique,
-            vector=vecteur,
-            payload={
-    "content": f"Question: {item['question']}\nRéponse: {item['reponse']}",
-    "source_file": nom_du_fichier_source,
-    "type": "faq" # Petite astuce pour que le bot sache d'où ça vient !
-}
-        ))
+def build_qdrant_points(
+    faq_items: List[Dict[str, str]],
+    embedding_model: SentenceTransformer,
+    source_file_name: str,
+) -> List[PointStruct]:
+    """Generate Qdrant points from parsed FAQ entries.
+
+    FR: Construit les points Qdrant (vecteurs + métadonnées) pour chaque entrée FAQ.
+    RU: Формирует точки Qdrant (вектора + метаданные) для каждой записи FAQ.
+    """
+    points: List[PointStruct] = []
+
+    for item in faq_items:
+        unique_id = str(uuid.uuid4())
+        text_to_vectorize = f"Question: {item['question']} Réponse: {item['answer']}"
+        vector = embedding_model.encode(text_to_vectorize).tolist()
+
+        points.append(
+            PointStruct(
+                id=unique_id,
+                vector=vector,
+                payload={
+                    "content": f"Question: {item['question']}\nRéponse: {item['answer']}",
+                    "source_file": source_file_name,
+                    "type": "faq",
+                },
+            )
+        )
+
     return points
 
-def nettoyer_et_remplacer(client, nom_collection, nom_fichier, nouveaux_points):
-    client.delete(
-        collection_name=nom_collection,
+
+def replace_source_points(
+    qdrant_client: QdrantClient,
+    collection: str,
+    source_file_name: str,
+    new_points: List[PointStruct],
+) -> None:
+    """Replace all points from a source file, then insert fresh points.
+
+    FR: Supprime les points existants d'une source puis insère les nouveaux.
+    RU: Удаляет существующие точки источника и вставляет новые.
+    """
+    qdrant_client.delete(
+        collection_name=collection,
         points_selector=models.Filter(
-            must=[models.FieldCondition(key="source_file", match=models.MatchValue(value=nom_fichier))]
-        )
+            must=[
+                models.FieldCondition(
+                    key="source_file",
+                    match=models.MatchValue(value=source_file_name),
+                )
+            ]
+        ),
     )
-    client.upsert(collection_name=nom_collection, points=nouveaux_points)
+    qdrant_client.upsert(collection_name=collection, points=new_points)
 
-def chercher_faq(client, nom_collection, modele, question_utilisateur, limite=3):
-    vecteur_question = modele.encode(question_utilisateur).tolist()
-    resultat = client.query_points(
-        collection_name=nom_collection,
-        query=vecteur_question,
-        limit=limite
+
+def search_faq(
+    qdrant_client: QdrantClient,
+    collection: str,
+    embedding_model: SentenceTransformer,
+    user_question: str,
+    limit: int = 3,
+) -> List[Any]:
+    """Search semantic FAQ matches in Qdrant.
+
+    FR: Recherche les meilleures réponses FAQ selon la similarité vectorielle.
+    RU: Ищет лучшие ответы FAQ по векторному сходству.
+    """
+    if not user_question:
+        return []
+
+    question_vector = embedding_model.encode(user_question).tolist()
+    result = qdrant_client.query_points(
+        collection_name=collection,
+        query=question_vector,
+        limit=limit,
     )
-    return resultat.points
+    return result.points
 
-# --- 3. BLOC D'EXÉCUTION (Uniquement quand on lance ce fichier directement) ---
 
 if __name__ == "__main__":
-    # 1. Vérifier si la collection existe au lieu de la recréer
-    if not client.collection_exists(collection_name=collection_name):
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config=models.VectorParams(size=1024, distance=models.Distance.COSINE)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    try:
+        # FR: Crée la collection si elle n'existe pas.
+        # RU: Создает коллекцию, если она не существует.
+        if not client.collection_exists(collection_name=collection_name):
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=models.VectorParams(size=1024, distance=models.Distance.COSINE),
+            )
+            LOGGER.info("Collection '%s' created.", collection_name)
+
+        source_file_name = "FAQ.txt"
+        content_blocks = load_and_split_faq(source_file_name)
+        structured_faq = [parse_faq_block(block) for block in content_blocks]
+
+        points = build_qdrant_points(structured_faq, model, source_file_name)
+        replace_source_points(
+            qdrant_client=client,
+            collection=collection_name,
+            source_file_name=source_file_name,
+            new_points=points,
         )
+        LOGGER.info("FAQ data successfully indexed into '%s'.", collection_name)
 
-    # Chargement et structuration
-    nom_du_fichier_source = "FAQ.txt"
-    mon_contenu = charger_et_decouper_faq(nom_du_fichier_source)
-    faq_structuree = [structurer_bloc(bloc) for bloc in mon_contenu]
+        test_question = "Je veux savoir comment avoir l'invitation"
+        search_results = search_faq(client, collection_name, model, test_question)
 
-    # Génération et envoi des points
-    mes_points_test = generer_points_avec_uuid(faq_structuree, model, nom_du_fichier_source)
-    
-    nettoyer_et_remplacer(
-        client=client, 
-        nom_collection=collection_name, 
-        nom_fichier=nom_du_fichier_source, 
-        nouveaux_points=mes_points_test
-    )
+        LOGGER.info("Search test for question: %s", test_question)
+        for rank, result_item in enumerate(search_results, start=1):
+            LOGGER.info("Rank %d (score %.4f): %s", rank, result_item.score, result_item.payload.get("content"))
 
-    print(f"✅ Données indexées avec succès dans '{collection_name}' !")
-
-    # Test rapide de recherche
-    ma_question = "Je veux savoir comment avoir l'invitation"
-    content = chercher_faq(client, collection_name, model, ma_question)
-
-    print(f"\n🔍 Test de recherche pour : '{ma_question}'")
-    for i, res in enumerate(content):
-        print(f"Rang {i+1} (Score: {res.score:.4f}): {res.payload['content']}")
+    except Exception:
+        LOGGER.exception("Indexation script failed.")
+        raise

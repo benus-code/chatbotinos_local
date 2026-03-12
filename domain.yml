@@ -1,0 +1,12 @@
+version: "3.1"
+
+intents:
+  - greet          # 🧠 Ajouté pour corriger l'erreur NLU
+  - demander_faq   # 🧠 Ajouté pour faire le lien avec Qdrant
+
+responses:
+  utter_greet:     # ✨ Définition de la réponse pour 'greet'
+    - text: "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
+
+actions:
+  - action_search_faq

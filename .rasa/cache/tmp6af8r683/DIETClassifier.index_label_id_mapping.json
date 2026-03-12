@@ -1,0 +1,9 @@
+{
+  "0": "affirm",
+  "1": "ask_question",
+  "2": "bot_challenge",
+  "3": "bot_info",
+  "4": "deny",
+  "5": "goodbye",
+  "6": "greet"
+}

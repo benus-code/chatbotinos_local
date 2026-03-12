@@ -1,0 +1,53 @@
+{
+  "text": {
+    "j": 8,
+    "ai": 0,
+    "une": 23,
+    "question": 18,
+    "sur": 22,
+    "le": 11,
+    "visa": 25,
+    "comment": 2,
+    "obtenir": 13,
+    "l": 9,
+    "invitation": 7,
+    "c": 1,
+    "est": 6,
+    "quoi": 19,
+    "la": 10,
+    "procédure": 15,
+    "pour": 14,
+    "russie": 20,
+    "quels": 17,
+    "sont": 21,
+    "les": 12,
+    "documents": 4,
+    "quelle": 16,
+    "durée": 5,
+    "de": 3,
+    "validité": 24
+  },
+  "intent": {
+    "demander_faq": 0,
+    "greet": 1
+  },
+  "response": null,
+  "action_name": {
+    "action_listen": 6,
+    "action_restart": 7,
+    "action_session_start": 10,
+    "action_default_fallback": 4,
+    "action_deactivate_loop": 1,
+    "action_revert_fallback_events": 8,
+    "action_default_ask_affirmation": 2,
+    "action_default_ask_rephrase": 3,
+    "action_two_stage_fallback": 11,
+    "action_unlikely_intent": 12,
+    "action_back": 0,
+    "action_extract_slots": 5,
+    "action_search_faq": 9,
+    "utter_greet": 13
+  },
+  "action_text": null,
+  "intent_response_key": null
+}

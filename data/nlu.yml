@@ -1,0 +1,18 @@
+version: "3.1"
+
+nlu:
+- intent: demander_faq
+  examples: |
+    - J'ai une question sur le visa
+    - Comment obtenir l'invitation ?
+    - C'est quoi la procédure pour la Russie ?
+    - Quels sont les documents pour le visa ?
+    - Quelle est la durée de validité ?
+
+- intent: greet
+  examples: |
+    - bonjour
+    - salut
+    - hello
+    - coucou
+    - bonsoir

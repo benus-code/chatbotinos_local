@@ -1,0 +1,10 @@
+{
+  "0": "ask_contact",
+  "1": "ask_livraison",
+  "2": "ask_question",
+  "3": "ask_retour",
+  "4": "bot_challenge",
+  "5": "demander_faq",
+  "6": "goodbye",
+  "7": "greet"
+}

@@ -1,181 +1,91 @@
-# This files contains your custom actions which can be used to run
-# custom Python code.
-#
-# See this guide on how to implement these action:
-# https://rasa.com/docs/rasa/custom-actions
+"""Rasa custom actions.
 
-
-# This is a simple example for a custom action which utters "Hello World!"
-
-# from typing import Any, Text, Dict, List
-#
-# from rasa_sdk import Action, Tracker
-# from rasa_sdk.executor import CollectingDispatcher
-#
-#
-# class ActionHelloWorld(Action):
-#
-#     def name(self) -> Text:
-#         return "action_hello_world"
-#
-#     def run(self, dispatcher: CollectingDispatcher,
-#             tracker: Tracker,
-#             domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
-#
-#         dispatcher.utter_message(text="Hello World!")
-#
-#         return []
+FR: Actions personnalisées pour orchestrer la recherche FAQ dans Qdrant.
+RU: Пользовательские действия для поиска FAQ в Qdrant.
 """
-import requests 
-from typing import Any, Text, Dict, List 
-from rasa_sdk import Action, Tracker 
-from rasa_sdk.executor import CollectingDispatcher 
-class ActionLlama3Explain(Action):  
-  def name(self) -> Text:  
-    return "action_llama3_explain" 
-  def run(self, dispatcher: CollectingDispatcher,  
-    tracker: Tracker,  
-    domain: Dict[Text, Any]) -> List[Dict[Text, Any]]: 
 
-    user_message = tracker.latest_message.get("text") 
- 
-    if not user_message: 
-      dispatcher.utter_message(text="Can you please repeat your question?") 
-      return [] 
-    try: 
-      response = requests.post( 
-        "http://localhost:11434/api/generate", 
-        json={ 
-          "model": "deepseek-r1:1.5b", 
-          "prompt": user_message, 
-          "stream": False 
-        } 
-      ) 
+from __future__ import annotations
 
-      if response.status_code == 200: 
-        data = response.json() 
-        answer = data.get("response", "").strip() 
-        if answer: 
-          dispatcher.utter_message(text=answer) 
-        else: 
-          dispatcher.utter_message(text="I couldn't find an explanation for that.") 
-      else: 
-        print(f"Ollama API Error - Status Code: {response.status_code}") 
-        dispatcher.utter_message(text="Sorry, I had trouble generating the answer.") 
+import logging
+from typing import Any, Dict, List, Text
 
-    except Exception as e: 
-      print(f"Error in Ollama request: {e}") 
-      dispatcher.utter_message(text="Sorry, something went wrong while contacting the model.") 
-"""
-"""
-from typing import Any, Text, Dict, List
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
-from .rag_system import rag_system
 
-class ActionRAGLookup(Action):
-    def name(self) -> Text:
-        return "action_rag_lookup"
+from .indexation import client, collection_name, model, search_faq
 
-    def run(self, dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
-        
-        try:
-            # Vérifier si le système RAG est chargé
-            if rag_system.index is None:
-                rag_system.load_knowledge_base()
-            
-            # Récupérer la requête utilisateur
-            user_query = tracker.latest_message.get('text')
-            
-            if not user_query:
-                dispatcher.utter_message(text="Je n'ai pas compris votre question. Pouvez-vous reformuler ?")
-                return []
-            
-            # Rechercher dans la base de connaissances
-            results = rag_system.search(user_query, top_k=1)
-            
-            if results:
-                best_answer = results[0]['answer']
-                dispatcher.utter_message(text=best_answer)
-            else:
-                dispatcher.utter_message(text="Je n'ai pas trouvé d'information pertinente dans ma base de connaissances.")
-            
-        except Exception as e:
-            print(f"Erreur RAG: {e}")
-            dispatcher.utter_message(text="Désolé, j'ai rencontré un problème technique. Veuillez réessayer.")
-        
-        return []
-"""
+LOGGER = logging.getLogger(__name__)
 
+MIN_RELEVANCE_SCORE = 0.50
 
-
-
-
-from typing import Any, Text, Dict, List
-from rasa_sdk import Action, Tracker
-from rasa_sdk.executor import CollectingDispatcher
-# On importe tes variables et fonctions depuis ton fichier indexation.py
-from indexation import client, model, collection_name, chercher_faq
-import re
-
-#implentation du request routing pour decter si la question du user en russe
-
-#def is_russian(text):
-    # Utilise une expression régulière pour détecter les caractères cyrilliques
-   # return bool(re.search('[а-яА-Я]', text))
-
-# Dans ton action Rasa :
-
-#if is_russian(user_query):
-    # Ici, on appelle Ollama uniquement pour traduire du russe au français
- #   query_for_rag = call_ollama_to_translate(user_query)
-#else:
-    # On utilise la question telle quelle pour le français ou l'anglais
-#    query_for_rag = user_query
-
-# fin de l'implementation
 
 class ActionSearchFAQ(Action):
+    """Handle FAQ lookup and return a bilingual answer.
+
+    FR: Effectue une recherche vectorielle et répond en format FR/RU.
+    RU: Выполняет векторный поиск и отвечает в формате FR/RU.
+    """
+
     def name(self) -> Text:
         return "action_search_faq"
 
-    def run(self, dispatcher: CollectingDispatcher,
-            tracker: Tracker,
-            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        """Process user message, query knowledge base, and respond safely.
 
-        # 1. On récupère le message de l'utilisateur
-        user_message = tracker.latest_message.get('text')
+        FR: Récupère la question utilisateur, cherche la meilleure correspondance,
+        puis envoie une réponse formatée avec gestion explicite des erreurs.
 
-        # 2. On cherche dans Qdrant
-        reponses = chercher_faq(client, collection_name, model, user_message, limite=1)
+        RU: Получает вопрос пользователя, ищет лучшее совпадение,
+        затем отправляет форматированный ответ с явной обработкой ошибок.
+        """
+        del domain  # Domain is unused in this action.
 
-        # 3. On traite le résultat si le score est bon
-        if reponses and reponses[0].score > 0.50:
-            p = reponses[0].payload
-            
-            # --- Extraction des données ---
-            # On prend 'content' s'il existe, sinon 'texte_fr'
-            fr = p.get('content') or p.get('texte_fr') or "Texte non trouvé"
-            ru = p.get('texte_ru', "Version russe non disponible")
-            src = p.get('source', "#") # '#' est un lien vide par défaut
-            pg = p.get('page', "?")
+        user_message = tracker.latest_message.get("text")
+        if not user_message:
+            LOGGER.warning("Empty user message received in action_search_faq.")
+            dispatcher.utter_message(text="Désolé, je n'ai pas reçu votre question. Pouvez-vous reformuler ?")
+            return []
 
-            # --- Construction du message final ---
-            # Le \n crée un retour à la ligne
-            message = (
-                f"🇫🇷 **Français :**\n{fr}\n\n"
-                f"🇷🇺 **Русский :**\n{ru}\n\n"
-                f"📂 **Source :** [Consulter le document (Page {pg})]({src})"
+        try:
+            responses = search_faq(
+                qdrant_client=client,
+                collection=collection_name,
+                embedding_model=model,
+                user_question=user_message,
+                limit=1,
+            )
+        except Exception:
+            LOGGER.exception("FAQ search failed for message: %s", user_message)
+            dispatcher.utter_message(
+                text="Désolé, une erreur technique est survenue pendant la recherche. Merci de réessayer."
+            )
+            return []
+
+        if responses and responses[0].score > MIN_RELEVANCE_SCORE:
+            payload = responses[0].payload or {}
+
+            # FR: On priorise 'content' puis fallback legacy 'texte_fr'.
+            # RU: Приоритет у 'content', затем legacy-ключ 'texte_fr'.
+            french_text = payload.get("content") or payload.get("texte_fr") or "Texte non trouvé"
+            russian_text = payload.get("texte_ru", "Version russe non disponible")
+            source = payload.get("source", "#")
+            page = payload.get("page", "?")
+
+            final_message = (
+                f"🇫🇷 **Français :**\n{french_text}\n\n"
+                f"🇷🇺 **Русский :**\n{russian_text}\n\n"
+                f"📂 **Source :** [Consulter le document (Page {page})]({source})"
             )
 
-            # 4. Envoi au bot
-            dispatcher.utter_message(text=message)
-            print(f"✅ Réponse envoyée (Score: {reponses[0].score:.4f})")
-        
-        else:
-            dispatcher.utter_message(text="Désolé, je n'ai pas trouvé d'information précise.")
-            print("⚠️ Aucun résultat ou score trop bas.")
+            dispatcher.utter_message(text=final_message)
+            LOGGER.info("FAQ response sent with score %.4f", responses[0].score)
+            return []
 
+        LOGGER.info("No relevant FAQ response found for message: %s", user_message)
+        dispatcher.utter_message(text="Désolé, je n'ai pas trouvé d'information précise.")
         return []

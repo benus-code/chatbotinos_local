@@ -87,5 +87,5 @@ class ActionSearchFAQ(Action):
             return []
 
         LOGGER.info("No relevant FAQ response found for message: %s", user_message)
-        dispatcher.utter_message(text="Désolé, je n'ai pas trouvé d'information précise.")
+        dispatcher.utter_message(response="utter_default")
         return []

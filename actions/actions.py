@@ -1,33 +1,44 @@
 """Rasa custom actions.
 
-FR: Actions personnalisées pour orchestrer la recherche FAQ dans Qdrant.
-RU: Пользовательские действия для поиска FAQ в Qdrant.
+FR: Actions personnalisées pour router intelligemment les requêtes utilisateur.
+RU: Пользовательские действия для интеллектуальной маршрутизации запросов.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Text
 
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
 
-from .indexation import client, collection_name, model, search_faq
-
 LOGGER = logging.getLogger(__name__)
 
-MIN_RELEVANCE_SCORE = 0.50
+
+# FR: Seuils de décision pilotés via variables d'environnement.
+# RU: Пороги принятия решения, управляемые через переменные окружения.
+INTENT_HIGH_CONF = float(os.getenv("INTENT_HIGH_CONF", "0.75"))
+INTENT_LOW_CONF = float(os.getenv("INTENT_LOW_CONF", "0.45"))
+RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.55"))
 
 
-class ActionSearchFAQ(Action):
-    """Handle FAQ lookup and return a bilingual answer.
+class ActionHybridRouter(Action):
+    """Route user requests based on intent confidence.
 
-    FR: Effectue une recherche vectorielle et répond en format FR/RU.
-    RU: Выполняет векторный поиск и отвечает в формате FR/RU.
+    FR:
+    - Cas A: confiance > HIGH => réponse déterministe (Rasa standard).
+    - Cas B: LOW <= confiance <= HIGH => simulation d'interrogation Qdrant.
+    - Cas C: confiance < LOW => fallback vers `utter_default`.
+
+    RU:
+    - Случай A: уверенность > HIGH => детерминированный ответ (стандарт Rasa).
+    - Случай B: LOW <= уверенность <= HIGH => симуляция запроса к Qdrant.
+    - Случай C: уверенность < LOW => fallback в `utter_default`.
     """
 
     def name(self) -> Text:
-        return "action_search_faq"
+        return "action_hybrid_router"
 
     def run(
         self,
@@ -35,57 +46,44 @@ class ActionSearchFAQ(Action):
         tracker: Tracker,
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
-        """Process user message, query knowledge base, and respond safely.
+        del domain
 
-        FR: Récupère la question utilisateur, cherche la meilleure correspondance,
-        puis envoie une réponse formatée avec gestion explicite des erreurs.
+        latest_intent = tracker.latest_message.get("intent") or {}
+        intent_name = latest_intent.get("name", "unknown")
+        confidence = float(latest_intent.get("confidence", 0.0))
 
-        RU: Получает вопрос пользователя, ищет лучшее совпадение,
-        затем отправляет форматированный ответ с явной обработкой ошибок.
-        """
-        del domain  # Domain is unused in this action.
+        # FR/RU: Journalisation standardisée pour audit rapide en console.
+        route = "UNSET"
 
-        user_message = tracker.latest_message.get("text")
-        if not user_message:
-            LOGGER.warning("Empty user message received in action_search_faq.")
-            dispatcher.utter_message(text="Désolé, je n'ai pas reçu votre question. Pouvez-vous reformuler ?")
+        if confidence > INTENT_HIGH_CONF:
+            route = "A_DETERMINISTIC_RASA"
+            LOGGER.info(
+                "[Intention détectée: %s] | [Score de confiance: %.4f] | [Route choisie: %s]",
+                intent_name,
+                confidence,
+                route,
+            )
+            dispatcher.utter_message(response="utter_faq_deterministic")
             return []
 
-        try:
-            responses = search_faq(
-                qdrant_client=client,
-                collection=collection_name,
-                embedding_model=model,
-                user_question=user_message,
-                limit=1,
+        if confidence >= INTENT_LOW_CONF:
+            route = "B_SIMULATED_QDRANT"
+            LOGGER.info(
+                "[Intention détectée: %s] | [Score de confiance: %.4f] | [Route choisie: %s]",
+                intent_name,
+                confidence,
+                route,
             )
-        except Exception:
-            LOGGER.exception("FAQ search failed for message: %s", user_message)
-            dispatcher.utter_message(
-                text="Désolé, une erreur technique est survenue pendant la recherche. Merci de réessayer."
-            )
+            LOGGER.info("Interrogation Qdrant simulée | seuil RAG_MIN_SCORE=%.2f", RAG_MIN_SCORE)
+            dispatcher.utter_message(response="utter_qdrant_simulated")
             return []
 
-        if responses and responses[0].score > MIN_RELEVANCE_SCORE:
-            payload = responses[0].payload or {}
-
-            # FR: On priorise 'content' puis fallback legacy 'texte_fr'.
-            # RU: Приоритет у 'content', затем legacy-ключ 'texte_fr'.
-            french_text = payload.get("content") or payload.get("texte_fr") or "Texte non trouvé"
-            russian_text = payload.get("texte_ru", "Version russe non disponible")
-            source = payload.get("source", "#")
-            page = payload.get("page", "?")
-
-            final_message = (
-                f"🇫🇷 **Français :**\n{french_text}\n\n"
-                f"🇷🇺 **Русский :**\n{russian_text}\n\n"
-                f"📂 **Source :** [Consulter le document (Page {page})]({source})"
-            )
-
-            dispatcher.utter_message(text=final_message)
-            LOGGER.info("FAQ response sent with score %.4f", responses[0].score)
-            return []
-
-        LOGGER.info("No relevant FAQ response found for message: %s", user_message)
+        route = "C_FALLBACK"
+        LOGGER.info(
+            "[Intention détectée: %s] | [Score de confiance: %.4f] | [Route choisie: %s]",
+            intent_name,
+            confidence,
+            route,
+        )
         dispatcher.utter_message(response="utter_default")
         return []

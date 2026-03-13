@@ -2,15 +2,15 @@ FROM rasa/rasa-sdk:3.6.2
 
 WORKDIR /app
 
-USER root
+RUN pip install --no-cache-dir \
+    qdrant-client \
+    sentence-transformers \
+    requests \
+    pypdf \
+    langchain
 
-COPY requirements-actions.txt /tmp/requirements-actions.txt
+COPY actions/ /app/actions/
 
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.1.2 \
-    && pip install --no-cache-dir -r /tmp/requirements-actions.txt \
-    && rm -f /tmp/requirements-actions.txt
+EXPOSE 5055
 
-COPY . /app/actions
-
-USER 1001
+CMD ["start", "--actions", "actions", "--port", "5055"]

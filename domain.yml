@@ -3,24 +3,32 @@ version: "3.1"
 intents:
   - greet
   - demander_faq
-  - out_of_scope
   - nlu_fallback
 
 responses:
   utter_greet:
     - text: "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
 
-  utter_visa_documents:
-    - text: "Pour la demande de visa étudiant, les documents principaux sont: passeport, lettre d'invitation, formulaire de demande, photo d'identité et preuve de ressources financières."
+  utter_faq_deterministic:
+    - text: |
+        Merci pour votre question.
+        ✅ Route A activée : je réponds en mode déterministe Rasa.
+        Pour la V1, cette réponse est un placeholder contrôlé.
 
-  utter_invitation_procedure:
-    - text: "La lettre d'invitation est généralement émise par l'université partenaire en Russie après validation de votre dossier d'admission."
-
-  utter_visa_validity:
-    - text: "La durée de validité dépend du type de visa. Pour un visa étudiant initial, la validité est souvent courte puis renouvelable une fois en Russie."
+  utter_qdrant_simulated:
+    - text: |
+        ✅ Route B activée : interrogation Qdrant simulée (préparation Semaine 2).
+        Merci de reformuler avec plus de détails si besoin.
 
   utter_default:
-    - text: "Désolé, je ne suis pas certain de la réponse. Pouvez-vous reformuler votre question ou donner plus de contexte ?"
+    - text: |
+        Désolé, je ne suis pas certain d'avoir bien compris votre demande.
+        Pouvez-vous reformuler votre question ?
+
+        ✅ Exemples de questions que vous pouvez poser :
+        - "Quels documents faut-il pour une inscription ?"
+        - "Comment contacter le support ?"
+        - "Quelles sont les étapes de la procédure ?"
 
 actions:
-  - action_search_faq
+  - action_hybrid_router

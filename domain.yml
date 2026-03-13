@@ -3,10 +3,24 @@ version: "3.1"
 intents:
   - greet          # 🧠 Ajouté pour corriger l'erreur NLU
   - demander_faq   # 🧠 Ajouté pour faire le lien avec Qdrant
+  - nlu_fallback
 
 responses:
   utter_greet:     # ✨ Définition de la réponse pour 'greet'
     - text: "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
+
+  utter_default:
+    - text: |
+        Désolé, je ne suis pas certain d'avoir bien compris votre demande.
+        Pouvez-vous reformuler votre question ?
+
+        ✅ Exemples de questions que vous pouvez poser :
+        - "Quels documents faut-il pour une inscription ?"
+        - "Comment contacter le support ?"
+        - "Quelles sont les étapes de la procédure ?"
+
+  utter_ask_rephrase:
+    - text: "Pouvez-vous reformuler votre question avec plus de détails ?"
 
 actions:
   - action_search_faq

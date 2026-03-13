@@ -5,3 +5,8 @@ rules:
     steps:
       - intent: demander_faq
       - action: action_search_faq
+
+  - rule: Fallback NLU explicite
+    steps:
+      - intent: nlu_fallback
+      - action: utter_default

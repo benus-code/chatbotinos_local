@@ -1,13 +1,24 @@
 version: "3.1"
 
 intents:
-  - greet          # 🧠 Ajouté pour corriger l'erreur NLU
-  - demander_faq   # 🧠 Ajouté pour faire le lien avec Qdrant
+  - greet
+  - demander_faq
   - nlu_fallback
 
 responses:
-  utter_greet:     # ✨ Définition de la réponse pour 'greet'
+  utter_greet:
     - text: "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
+
+  utter_faq_deterministic:
+    - text: |
+        Merci pour votre question.
+        ✅ Route A activée : je réponds en mode déterministe Rasa.
+        Pour la V1, cette réponse est un placeholder contrôlé.
+
+  utter_qdrant_simulated:
+    - text: |
+        ✅ Route B activée : interrogation Qdrant simulée (préparation Semaine 2).
+        Merci de reformuler avec plus de détails si besoin.
 
   utter_default:
     - text: |
@@ -19,8 +30,5 @@ responses:
         - "Comment contacter le support ?"
         - "Quelles sont les étapes de la procédure ?"
 
-  utter_ask_rephrase:
-    - text: "Pouvez-vous reformuler votre question avec plus de détails ?"
-
 actions:
-  - action_search_faq
+  - action_hybrid_router

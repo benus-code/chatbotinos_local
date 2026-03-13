@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.11.3
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    mem_limit: 1g
+    restart: unless-stopped
+
+  action_server:
+    build:
+      context: .
+      dockerfile: actions/Dockerfile
+    container_name: action_server
+    env_file:
+      - .env
+    ports:
+      - "5055:5055"
+    volumes:
+      - ./actions:/app/actions
+    depends_on:
+      - qdrant
+    mem_limit: 1536m
+    restart: unless-stopped
+
+  rasa:
+    image: rasa/rasa:3.6.20
+    container_name: rasa
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    ports:
+      - "5005:5005"
+    command: >
+      run --enable-api --cors "*" --debug
+    depends_on:
+      - action_server
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:

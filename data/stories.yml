@@ -6,4 +6,4 @@ stories:
   - intent: greet
   - action: utter_greet
   - intent: demander_faq
-  - action: action_search_faq
+  - action: action_hybrid_router

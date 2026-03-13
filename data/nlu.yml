@@ -8,6 +8,9 @@ nlu:
     - C'est quoi la procédure pour la Russie ?
     - Quels sont les documents pour le visa ?
     - Quelle est la durée de validité ?
+    - Quels papiers faut-il pour un visa étudiant ?
+    - Je dois renouveler mon visa, comment faire ?
+    - Qui délivre l'invitation universitaire ?
 
 - intent: greet
   examples: |
@@ -16,3 +19,16 @@ nlu:
     - hello
     - coucou
     - bonsoir
+
+- intent: out_of_scope
+  examples: |
+    - Quel temps fera-t-il demain à Paris ?
+    - Peux-tu me raconter une blague ?
+    - Comment réparer mon ordinateur portable ?
+    - Donne-moi une recette de tiramisu
+    - Qui a gagné la coupe du monde 2018 ?
+    - J'ai mal au dos, quel traitement prendre ?
+    - Réserve-moi un billet de train pour Lyon
+    - Aide-moi à faire mes impôts
+    - Quel est le prix du bitcoin aujourd'hui ?
+    - Écris un poème sur la mer

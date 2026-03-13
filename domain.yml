@@ -1,12 +1,26 @@
 version: "3.1"
 
 intents:
-  - greet          # 🧠 Ajouté pour corriger l'erreur NLU
-  - demander_faq   # 🧠 Ajouté pour faire le lien avec Qdrant
+  - greet
+  - demander_faq
+  - out_of_scope
+  - nlu_fallback
 
 responses:
-  utter_greet:     # ✨ Définition de la réponse pour 'greet'
+  utter_greet:
     - text: "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
+
+  utter_visa_documents:
+    - text: "Pour la demande de visa étudiant, les documents principaux sont: passeport, lettre d'invitation, formulaire de demande, photo d'identité et preuve de ressources financières."
+
+  utter_invitation_procedure:
+    - text: "La lettre d'invitation est généralement émise par l'université partenaire en Russie après validation de votre dossier d'admission."
+
+  utter_visa_validity:
+    - text: "La durée de validité dépend du type de visa. Pour un visa étudiant initial, la validité est souvent courte puis renouvelable une fois en Russie."
+
+  utter_default:
+    - text: "Désolé, je ne suis pas certain de la réponse. Pouvez-vous reformuler votre question ou donner plus de contexte ?"
 
 actions:
   - action_search_faq

@@ -47,21 +47,83 @@ class ActionHybridRouter(Action):
     def name(self) -> Text:
         return "action_hybrid_router"
 
-    def _rag_lookup(self, user_text: str) -> Optional[str]:
+    @staticmethod
+    def _format_result(r: Any) -> str:
+        """Format a single Qdrant point into a human-readable response.
+
+        FR: Formate un point Qdrant en réponse lisible selon son type (faq ou pdf).
+        RU: Форматирует точку Qdrant в читаемый ответ в зависимости от типа (faq или pdf).
+        """
+        doc_type = r.payload.get("type", "")
+        content = r.payload.get("content", "")
+
+        if doc_type == "faq":
+            source = r.payload.get("source_file", "FAQ")
+            return f"{content}\n\n_Source : {source}_"
+
+        # PDF chunk
+        source = r.payload.get("source", "corpus")
+        page = r.payload.get("page")
+        source_label = f"{source} — p. {page}" if page else source
+        return f"📄 {content}\n\n_Source : {source_label}_"
+
+    def _rag_lookup(self, user_text: str, multi: bool = False) -> Optional[str]:
         """Query Qdrant and return formatted content, or None if below threshold.
 
-        FR: Interroge Qdrant et retourne le contenu formaté, ou None si score insuffisant.
-        RU: Запрашивает Qdrant и возвращает отформатированный контент, или None если балл ниже порога.
+        FR: Interroge Qdrant et retourne le contenu formaté (un ou plusieurs résultats).
+            Si multi=True, inclut jusqu'à 3 résultats quand les scores sont proches.
+        RU: Запрашивает Qdrant и возвращает отформатированный контент (один или несколько).
+            При multi=True включает до 3 результатов при близких значениях score.
         """
         try:
+            limit = 3 if multi else 1
             results = search_faq(
-                qdrant_client, collection_name, embedding_model, user_text, limit=1
+                qdrant_client, collection_name, embedding_model, user_text, limit=limit
             )
-            if results and results[0].score >= RAG_MIN_SCORE:
-                r = results[0]
-                source = r.payload.get("source_file") or r.payload.get("source", "corpus")
-                LOGGER.info("Qdrant result: score=%.4f source=%s", r.score, source)
-                return f"{r.payload['content']}\n\n_Source : {source}_"
+            if not results or results[0].score < RAG_MIN_SCORE:
+                return None
+
+            # FR: Filtre qualité — exclut les chunks vides ou trop courts (headers PDF, FAQ sans réponse).
+            # RU: Фильтр качества — исключает пустые или слишком короткие чанки.
+            def _is_useful(r: Any) -> bool:
+                content = r.payload.get("content", "").strip()
+                if len(content) < 80:
+                    return False
+                if r.payload.get("type") == "faq":
+                    answer = ""
+                    if "Réponse:" in content:
+                        answer = content.split("Réponse:", 1)[-1].strip()
+                    return len(answer) > 5
+                return True
+
+            usable = [r for r in results if r.score >= RAG_MIN_SCORE and _is_useful(r)]
+            if not usable:
+                return None
+
+            top = usable[0]
+            LOGGER.info(
+                "Qdrant top result: score=%.4f type=%s",
+                top.score,
+                top.payload.get("type", "?"),
+            )
+
+            if not multi or len(usable) == 1:
+                return self._format_result(top)
+
+            # FR: Inclure les résultats supplémentaires dont le score est proche du meilleur.
+            # RU: Включать дополнительные результаты с близким значением score.
+            close_results = [
+                r for r in usable[1:]
+                if (top.score - r.score) <= 0.08
+            ]
+            if not close_results:
+                return self._format_result(top)
+
+            parts = [self._format_result(top)]
+            for r in close_results:
+                parts.append(self._format_result(r))
+            return "\n\n---\n\n".join(parts)
+
         except Exception:
             LOGGER.exception("Qdrant lookup failed — graceful degradation")
         return None
@@ -106,7 +168,7 @@ class ActionHybridRouter(Action):
                 route,
             )
             LOGGER.info("Interrogation Qdrant | seuil RAG_MIN_SCORE=%.2f", RAG_MIN_SCORE)
-            rag_answer = self._rag_lookup(user_text)
+            rag_answer = self._rag_lookup(user_text, multi=True)
             if rag_answer:
                 dispatcher.utter_message(text=rag_answer)
             else:

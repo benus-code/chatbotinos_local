@@ -1,0 +1,18 @@
+# Qdrant local data (generated at runtime)
+qdrant_data/
+.qdrant-initialized
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Venv Windows (inutilisable sur Linux)
+venv/
+
+# Models cache
+.cache/
+
+# Rasa models (binaires lourds)
+models/*.tar.gz

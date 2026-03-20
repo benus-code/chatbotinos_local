@@ -17,8 +17,8 @@ responses:
 
   utter_qdrant_simulated:
     - text: |
-        ✅ Route B activée : interrogation Qdrant simulée (préparation Semaine 2).
-        Merci de reformuler avec plus de détails si besoin.
+        Je n'ai pas trouvé de réponse précise à votre question dans notre base de données.
+        Pouvez-vous reformuler ou préciser votre demande ?
 
   utter_default:
     - text: |

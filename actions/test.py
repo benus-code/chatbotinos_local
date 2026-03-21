@@ -1,14 +1,15 @@
 from sentence_transformers import SentenceTransformer
 
-model = SentenceTransformer("jinaai/jina-embeddings-v3", trust_remote_code=True)
+if __name__ == "__main__":
+    model = SentenceTransformer("jinaai/jina-embeddings-v3", trust_remote_code=True)
 
-sentences = [
-    "The weather is lovely today.",
-    "It's so sunny outside!",
-    "He drove to the stadium."
-]
-embeddings = model.encode(sentences)
+    sentences = [
+        "The weather is lovely today.",
+        "It's so sunny outside!",
+        "He drove to the stadium."
+    ]
+    embeddings = model.encode(sentences)
 
-similarities = model.similarity(embeddings, embeddings)
-print(similarities.shape)
-# [3, 3]
+    similarities = model.similarity(embeddings, embeddings)
+    print(similarities.shape)
+    # [3, 3]

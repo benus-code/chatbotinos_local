@@ -17,7 +17,8 @@ RUN /opt/venv/bin/pip install --no-cache-dir \
     requests \
     pypdf \
     PyMuPDF \
-    deep-translator
+    deep-translator \
+    pytest
 
 # FR: Repasser sur l'utilisateur non-root de rasa-sdk pour l'exécution.
 # RU: Вернуться к non-root пользователю rasa-sdk для запуска.

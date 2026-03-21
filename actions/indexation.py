@@ -142,6 +142,62 @@ def search_faq(
     return result.points
 
 
+def build_qdrant_points_pdf(
+    chunks: List[Dict[str, str]],
+    embedding_model: SentenceTransformer,
+) -> List[PointStruct]:
+    """Generate Qdrant points from PDF chunks produced by pdf_chunker.py.
+
+    FR: Construit les points Qdrant pour des chunks PDF (clé 'source' au lieu de 'source_file').
+    RU: Формирует точки Qdrant для PDF-чанков (ключ 'source' вместо 'source_file').
+    """
+    points: List[PointStruct] = []
+
+    for chunk in chunks:
+        unique_id = str(uuid.uuid4())
+        vector = embedding_model.encode(chunk["content"]).tolist()
+
+        payload: Dict[str, Any] = {
+            "content": chunk["content"],
+            "source": chunk.get("source", ""),
+            "page": chunk.get("page"),
+            "type": "pdf",
+        }
+        # Preserve article metadata when present (legal documents)
+        for key in ("article_num", "section_num", "section_titre"):
+            if chunk.get(key):
+                payload[key] = chunk[key]
+
+        points.append(PointStruct(id=unique_id, vector=vector, payload=payload))
+
+    return points
+
+
+def replace_pdf_source_points(
+    qdrant_client: QdrantClient,
+    collection: str,
+    source_name: str,
+    new_points: List[PointStruct],
+) -> None:
+    """Replace all PDF points from a given source, then insert fresh points.
+
+    FR: Supprime les points PDF existants d'une source puis insère les nouveaux.
+    RU: Удаляет существующие PDF-точки источника и вставляет новые.
+    """
+    qdrant_client.delete(
+        collection_name=collection,
+        points_selector=models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="source",
+                    match=models.MatchValue(value=source_name),
+                )
+            ]
+        ),
+    )
+    qdrant_client.upsert(collection_name=collection, points=new_points)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 

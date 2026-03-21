@@ -7,6 +7,7 @@ Ce module centralise l'indexation FAQ et la recherche sémantique.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import uuid
 from pathlib import Path
@@ -22,7 +23,7 @@ LOGGER = logging.getLogger(__name__)
 # Configuration Qdrant / Embedding
 # Configuration de la connexion Qdrant et du modèle d'embedding.
 # Конфигурация подключения к Qdrant и модели эмбеддингов.
-client = QdrantClient(host="localhost", port=6333, timeout=60)
+client = QdrantClient(host=os.getenv("QDRANT_HOST", "qdrant"), port=6333, timeout=60)
 model = SentenceTransformer("Qwen/Qwen3-Embedding-0.6B", trust_remote_code=True)
 collection_name = "FAQ_Multilingue"
 

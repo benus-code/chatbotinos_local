@@ -25,6 +25,13 @@ USER 1001
 # RU: Добавить /app/actions в PYTHONPATH, чтобы `from indexation import ...` работал.
 ENV PYTHONPATH=/app/actions
 
+# FR: PyTorch 2.10 appelle getpass.getuser() pour son cache — échoue si l'UID n'est pas dans /etc/passwd.
+#     LOGNAME est lu en priorité, ce qui évite l'appel à pwd.getpwuid().
+# RU: PyTorch 2.10 вызывает getpass.getuser() для кеша — падает если UID отсутствует в /etc/passwd.
+#     LOGNAME читается приоритетно, избегая вызова pwd.getpwuid().
+ENV LOGNAME=rasa
+ENV HOME=/tmp
+
 COPY actions/ /app/actions/
 
 EXPOSE 5055

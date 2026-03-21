@@ -152,7 +152,7 @@ class ActionHybridRouter(Action):
                 confidence,
                 route,
             )
-            rag_answer = self._rag_lookup(user_text)
+            rag_answer = self._rag_lookup(user_text, multi=True)
             if rag_answer:
                 dispatcher.utter_message(text=rag_answer)
             else:

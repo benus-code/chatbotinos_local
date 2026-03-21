@@ -21,6 +21,10 @@ RUN /opt/venv/bin/pip install --no-cache-dir \
 # RU: Вернуться к non-root пользователю rasa-sdk для запуска.
 USER 1001
 
+# FR: Ajouter /app/actions au PYTHONPATH pour que `from indexation import ...` fonctionne.
+# RU: Добавить /app/actions в PYTHONPATH, чтобы `from indexation import ...` работал.
+ENV PYTHONPATH=/app/actions
+
 COPY actions/ /app/actions/
 
 EXPOSE 5055

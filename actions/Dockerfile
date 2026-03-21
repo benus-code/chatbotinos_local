@@ -12,7 +12,7 @@ RUN /opt/venv/bin/pip install --no-cache-dir \
     torch --index-url https://download.pytorch.org/whl/cpu
 
 RUN /opt/venv/bin/pip install --no-cache-dir \
-    "qdrant-client==1.11.5" \
+    "qdrant-client==1.11.3" \
     sentence-transformers \
     requests \
     pypdf \

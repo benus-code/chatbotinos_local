@@ -41,7 +41,7 @@ def load_and_split_faq(file_path: str) -> List[str]:
         text_to_vectorize = file.read()
 
     blocks = re.split(r"\n(?=Q-)", text_to_vectorize)
-    return [block.strip() for block in blocks if block.strip()]
+    return [block.strip() for block in blocks if block.strip().startswith("Q-")]
 
 
 def parse_faq_block(block: str) -> Dict[str, str]:
@@ -75,7 +75,7 @@ def build_qdrant_points(
     for item in faq_items:
         unique_id = str(uuid.uuid4())
         text_to_vectorize = f"Question: {item['question']} Réponse: {item['answer']}"
-        vector = embedding_model.encode(text_to_vectorize).tolist()
+        vector = list(embedding_model.encode(text_to_vectorize))
 
         points.append(
             PointStruct(
@@ -132,7 +132,7 @@ def search_faq(
     if not user_question:
         return []
 
-    question_vector = embedding_model.encode(user_question).tolist()
+    question_vector = list(embedding_model.encode(user_question))
     result = qdrant_client.query_points(
         collection_name=collection,
         query=question_vector,

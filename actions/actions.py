@@ -93,7 +93,8 @@ class ActionHybridRouter(Action):
                     answer = ""
                     if "Réponse:" in content:
                         answer = content.split("Réponse:", 1)[-1].strip()
-                    return len(answer) > 5
+                    return len(answer) > 5 and not answer.startswith("??")
+
                 return True
 
             usable = [r for r in results if r.score >= RAG_MIN_SCORE and _is_useful(r)]

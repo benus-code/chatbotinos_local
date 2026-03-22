@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import List
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 
@@ -23,7 +24,7 @@ import pytest
 def mock_model() -> MagicMock:
     """Return a MagicMock that mimics SentenceTransformer.encode()."""
     m = MagicMock()
-    m.encode.return_value = [0.1] * 1024
+    m.encode.return_value = np.array([0.1] * 1024)
     return m
 
 
@@ -66,7 +67,6 @@ def mock_qdrant() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 _SAMPLE_FAQ = """\
-?? VISA
 Q-"Quel est le délai pour obtenir le visa ?"
 R- Il faut compter entre 30 et 40 jours.
 Q-"Quels documents sont requis ?"

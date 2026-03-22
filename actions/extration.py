@@ -1,8 +1,7 @@
 import fitz
 import re
 import json
-import time
-from deep_translator import GoogleTranslator
+from transformers import MarianMTModel, MarianTokenizer
 
 # --- FONCTIONS DE BASE ---
 
@@ -85,12 +84,28 @@ def detecter_type_article(texte, titre):
 
 # --- TRADUCTION ---
 
-def traduire_chunk(text, translator):
-    """Traduit un texte avec gestion d'erreur."""
+_TRANSLATOR_MODEL = None
+_TRANSLATOR_TOKENIZER = None
+_MODEL_NAME = "Helsinki-NLP/opus-mt-ru-fr"
+
+def _get_translator():
+    """Charge le modèle MarianMT une seule fois (lazy loading)."""
+    global _TRANSLATOR_MODEL, _TRANSLATOR_TOKENIZER
+    if _TRANSLATOR_MODEL is None:
+        print(f"Chargement du modèle de traduction {_MODEL_NAME}...")
+        _TRANSLATOR_TOKENIZER = MarianTokenizer.from_pretrained(_MODEL_NAME)
+        _TRANSLATOR_MODEL = MarianMTModel.from_pretrained(_MODEL_NAME)
+        print("Modèle de traduction prêt.")
+    return _TRANSLATOR_TOKENIZER, _TRANSLATOR_MODEL
+
+def traduire_chunk(text, translator=None):
+    """Traduit un texte russe en français via Helsinki-NLP/opus-mt-ru-fr (offline)."""
     try:
-        # La pause est importante pour ne pas être banni par Google
-        time.sleep(0.5) 
-        return translator.translate(text)
+        tokenizer, model = _get_translator()
+        # Découper si le texte est trop long (max ~512 tokens)
+        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        translated = model.generate(**inputs)
+        return tokenizer.decode(translated[0], skip_special_tokens=True)
     except Exception as e:
         return f"[Erreur traduction: {e}]"
 
@@ -104,18 +119,15 @@ if __name__ == "__main__":
     texte_brut = extraire_texte_propre(doc)
     resultats, doc_info = parser_le_document_ameliore(texte_brut)
     
-    # CORRECTION ICI : Instanciation correcte
-    translator = GoogleTranslator(source='ru', target='fr')
-    
     print(f"🌍 Traduction en cours ({len(resultats)} articles)...")
-    
+
     for article in resultats:
         # 1. Classification
         article["metadata"]["type"] = detecter_type_article(article["texte"], article["metadata"]["article_titre"])
-        
+
         # 2. Traduction
         print(f" -> Traduction article {article['metadata']['article_num']}...")
-        article["texte_fr"] = traduire_chunk(article["texte"], translator)
+        article["texte_fr"] = traduire_chunk(article["texte"])
     
     # Sauvegarde
     output = {"document_info": doc_info, "total_articles": len(resultats), "chunks": resultats}

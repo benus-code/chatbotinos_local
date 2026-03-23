@@ -11,7 +11,6 @@ RU: Извлечение текста и разбивка PDF в зависим�
 from __future__ import annotations
 
 import re
-import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -151,30 +150,55 @@ def chunk_by_tokens(
     return chunks
 
 
+_TRANSLATOR = None  # None = pas chargé ; False = échec ; tuple = (tokenizer, model)
+
+def _get_marian_translator():
+    """Charge Helsinki-NLP/opus-mt-ru-fr une seule fois (lazy loading)."""
+    global _TRANSLATOR
+    if _TRANSLATOR is False:
+        raise RuntimeError("Le modèle de traduction n'a pas pu être chargé.")
+    if _TRANSLATOR is None:
+        from transformers import MarianMTModel, MarianTokenizer
+        model_name = "Helsinki-NLP/opus-mt-ru-fr"
+        print(f"Chargement du modele de traduction {model_name}...")
+        try:
+            tokenizer = MarianTokenizer.from_pretrained(model_name)
+            model = MarianMTModel.from_pretrained(model_name)
+            _TRANSLATOR = (tokenizer, model)
+            print("Modele de traduction pret.")
+        except Exception as exc:
+            _TRANSLATOR = False
+            raise RuntimeError(f"Impossible de charger {model_name}: {exc}") from exc
+    return _TRANSLATOR
+
+
 def translate_chunks(
     chunks: List[Dict],
     src: str = "ru",
     tgt: str = "fr",
 ) -> List[Dict]:
-    """Translate the 'content' field of each chunk using GoogleTranslator.
+    """Translate the 'content' field of each chunk using Helsinki-NLP/opus-mt-ru-fr (offline).
 
-    FR: Traduit le champ 'content' de chaque chunk via GoogleTranslator.
-    RU: Переводит поле 'content' каждого чанка через GoogleTranslator.
+    FR: Traduit le champ 'content' de chaque chunk via MarianMT (offline).
+    RU: Переводит поле 'content' каждого чанка через MarianMT (офлайн).
     """
-    from deep_translator import GoogleTranslator  # imported here — optional dependency
-
-    translator = GoogleTranslator(source=src, target=tgt)
-    translated: List[Dict] = []
-
     for chunk in chunks:
         try:
-            time.sleep(0.5)  # Avoid Google rate-limiting
-            chunk["content"] = translator.translate(chunk["content"])
+            tokenizer, model = _get_marian_translator()
+            inputs = tokenizer(
+                chunk["content"],
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=512,
+            )
+            translated = model.generate(**inputs)
+            chunk["content"] = tokenizer.decode(translated[0], skip_special_tokens=True)
         except Exception as exc:  # noqa: BLE001
+            print(f"[ERREUR TRADUCTION] {exc}")
             chunk["content"] = f"[Erreur traduction: {exc}]"
-        translated.append(chunk)
 
-    return translated
+    return chunks
 
 
 def extract_and_chunk_pdf(

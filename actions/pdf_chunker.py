@@ -193,8 +193,21 @@ def translate_chunks(
                 truncation=True,
                 max_length=512,
             )
-            translated = model.generate(**inputs)
-            chunk["content"] = html.unescape(tokenizer.decode(translated[0], skip_special_tokens=True))
+            translated = model.generate(
+                **inputs,
+                max_new_tokens=512,
+                no_repeat_ngram_size=3,
+                early_stopping=True,
+                num_beams=4,
+            )
+            raw = tokenizer.decode(translated[0], skip_special_tokens=True)
+            raw = html.unescape(raw)
+            # Fix spaces around apostrophes: "d ' hébergement" → "d'hébergement"
+            raw = re.sub(r"\s+'\s+", "'", raw)
+            # Remove leftover HTML entity fragments (e.g. "&atation", "apos;")
+            raw = re.sub(r"&[a-zA-Z]+;?", "", raw)
+            raw = re.sub(r"\b[a-z]+;", "", raw)
+            chunk["content"] = raw.strip()
         except Exception as exc:  # noqa: BLE001
             print(f"[ERREUR TRADUCTION] {exc}")
             chunk["content"] = f"[Erreur traduction: {exc}]"

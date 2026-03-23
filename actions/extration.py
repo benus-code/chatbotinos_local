@@ -121,12 +121,12 @@ def traduire_chunk(text, translator=None):
 if __name__ == "__main__":
     fichier_pdf = "Polozhenie_o_studencheskom_obschezhitii.pdf"
     
-    print(f"📄 Traitement de {fichier_pdf}...")
+    print(f"Traitement de {fichier_pdf}...")
     doc = fitz.open(fichier_pdf)
     texte_brut = extraire_texte_propre(doc)
     resultats, doc_info = parser_le_document_ameliore(texte_brut)
-    
-    print(f"🌍 Traduction en cours ({len(resultats)} articles)...")
+
+    print(f"Traduction en cours ({len(resultats)} articles)...")
 
     for article in resultats:
         # 1. Classification
@@ -141,4 +141,4 @@ if __name__ == "__main__":
     with open("chunks_tusur_final_fr.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
         
-    print(f"\n✅ Terminé ! Sauvegardé dans chunks_tusur_final_fr.json")
+    print(f"\nTermine ! Sauvegarde dans chunks_tusur_final_fr.json")

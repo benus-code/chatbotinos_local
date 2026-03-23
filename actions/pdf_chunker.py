@@ -53,15 +53,61 @@ def detect_doc_type(text: str) -> str:
     return "guide"
 
 
+_MAX_ARTICLE_WORDS = 200  # Articles > 200 mots sont découpés en sous-chunks
+
+
+def _split_article_into_subchunks(article: Dict) -> List[Dict]:
+    """Split an oversized article into sentence-based sub-chunks.
+
+    FR: Découpe un article trop long en sous-chunks basés sur les phrases.
+    RU: Разбивает слишком длинную статью на подчанки по предложениям.
+    """
+    words = article["content"].split()
+    if len(words) <= _MAX_ARTICLE_WORDS:
+        return [article]
+
+    # Split on sentence boundaries (". ", "; ", ": ")
+    sentences = re.split(r"(?<=[.;:])\s+", article["content"])
+    subchunks: List[Dict] = []
+    current_words: List[str] = []
+    sub_idx = 1
+
+    for sentence in sentences:
+        sentence_words = sentence.split()
+        if current_words and len(current_words) + len(sentence_words) > _MAX_ARTICLE_WORDS:
+            subchunks.append({
+                **article,
+                "content": " ".join(current_words),
+                "article_num": f"{article['article_num']}.{sub_idx}",
+            })
+            sub_idx += 1
+            current_words = sentence_words
+        else:
+            current_words.extend(sentence_words)
+
+    if current_words:
+        subchunks.append({
+            **article,
+            "content": " ".join(current_words),
+            "article_num": f"{article['article_num']}.{sub_idx}",
+        })
+
+    return subchunks
+
+
 def chunk_by_articles(text: str, source: str) -> List[Dict]:
     """Split text into numbered article chunks (for legal/regulatory docs).
 
-    Refactored from extration.py:parser_le_document_ameliore.
+    Articles longer than _MAX_ARTICLE_WORDS are further split into
+    sentence-based sub-chunks to improve translation quality and
+    retrieval precision.
 
     FR: Découpe par articles numérotés (ex. 3.1., 3.2.) pour docs officiels.
-    RU: Разбивает по нумерованным статьям (напр. 3.1.) для официальных документов.
+        Les articles > 200 mots sont découpés en sous-chunks par phrase.
+    RU: Разбивает по нумерованным статьям для официальных документов.
+        Статьи > 200 слов дополнительно разбиваются по предложениям.
     """
-    chunks: List[Dict] = []
+    raw_chunks: List[Dict] = []
     current_article: Optional[Dict] = None
     current_section: Optional[Dict] = None
 
@@ -81,7 +127,7 @@ def chunk_by_articles(text: str, source: str) -> List[Dict]:
                 current_article["content"] = re.sub(
                     r"\s+", " ", current_article["content"]
                 ).strip()
-                chunks.append(current_article)
+                raw_chunks.append(current_article)
 
             current_article = {
                 "content": line,
@@ -99,7 +145,12 @@ def chunk_by_articles(text: str, source: str) -> List[Dict]:
         current_article["content"] = re.sub(
             r"\s+", " ", current_article["content"]
         ).strip()
-        chunks.append(current_article)
+        raw_chunks.append(current_article)
+
+    # Split oversized articles into sentence-based sub-chunks
+    chunks: List[Dict] = []
+    for article in raw_chunks:
+        chunks.extend(_split_article_into_subchunks(article))
 
     return chunks
 

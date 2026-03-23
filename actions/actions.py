@@ -28,9 +28,15 @@ class ActionHybridRouter(Action):
         return "action_hybrid_router"
 
     @staticmethod
+    _MAX_CONTENT_CHARS = 600
+
     def _format_result(r: Any) -> str:
         doc_type = r.payload.get("type", "")
         content = r.payload.get("content", "")
+
+        # Truncate long chunks for readability (PDF legal articles can be very long)
+        if len(content) > ActionHybridRouter._MAX_CONTENT_CHARS:
+            content = content[: ActionHybridRouter._MAX_CONTENT_CHARS].rsplit(" ", 1)[0] + "…"
 
         if doc_type == "faq":
             source = r.payload.get("source_file", "FAQ")

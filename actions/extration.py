@@ -84,29 +84,36 @@ def detecter_type_article(texte, titre):
 
 # --- TRADUCTION ---
 
-_TRANSLATOR_MODEL = None
-_TRANSLATOR_TOKENIZER = None
 _MODEL_NAME = "Helsinki-NLP/opus-mt-ru-fr"
+# None = pas encore chargé ; False = échec de chargement ; tuple = (tokenizer, model)
+_TRANSLATOR = None
 
 def _get_translator():
-    """Charge le modèle MarianMT une seule fois (lazy loading)."""
-    global _TRANSLATOR_MODEL, _TRANSLATOR_TOKENIZER
-    if _TRANSLATOR_MODEL is None:
+    """Charge le modèle MarianMT une seule fois. Lève une exception si le chargement échoue."""
+    global _TRANSLATOR
+    if _TRANSLATOR is False:
+        raise RuntimeError("Le modèle de traduction n'a pas pu être chargé (voir erreur précédente).")
+    if _TRANSLATOR is None:
         print(f"Chargement du modèle de traduction {_MODEL_NAME}...")
-        _TRANSLATOR_TOKENIZER = MarianTokenizer.from_pretrained(_MODEL_NAME)
-        _TRANSLATOR_MODEL = MarianMTModel.from_pretrained(_MODEL_NAME)
-        print("Modèle de traduction prêt.")
-    return _TRANSLATOR_TOKENIZER, _TRANSLATOR_MODEL
+        try:
+            tokenizer = MarianTokenizer.from_pretrained(_MODEL_NAME)
+            model = MarianMTModel.from_pretrained(_MODEL_NAME)
+            _TRANSLATOR = (tokenizer, model)
+            print("Modèle de traduction prêt.")
+        except Exception as e:
+            _TRANSLATOR = False
+            raise RuntimeError(f"Impossible de charger {_MODEL_NAME}: {e}") from e
+    return _TRANSLATOR
 
 def traduire_chunk(text, translator=None):
     """Traduit un texte russe en français via Helsinki-NLP/opus-mt-ru-fr (offline)."""
     try:
         tokenizer, model = _get_translator()
-        # Découper si le texte est trop long (max ~512 tokens)
         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
         translated = model.generate(**inputs)
         return tokenizer.decode(translated[0], skip_special_tokens=True)
     except Exception as e:
+        print(f"[ERREUR TRADUCTION] {e}")
         return f"[Erreur traduction: {e}]"
 
 # --- UTILISATION PRINCIPALE ---

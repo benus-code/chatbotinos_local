@@ -14,6 +14,8 @@ RUN /opt/venv/bin/pip install --no-cache-dir \
 RUN /opt/venv/bin/pip install --no-cache-dir \
     "qdrant-client==1.11.3" \
     sentence-transformers \
+    sentencepiece \
+    sacremoses \
     requests \
     pypdf \
     PyMuPDF \

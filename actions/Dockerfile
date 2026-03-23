@@ -14,10 +14,11 @@ RUN /opt/venv/bin/pip install --no-cache-dir \
 RUN /opt/venv/bin/pip install --no-cache-dir \
     "qdrant-client==1.11.3" \
     sentence-transformers \
+    sentencepiece \
+    sacremoses \
     requests \
     pypdf \
     PyMuPDF \
-    deep-translator \
     pytest
 
 # FR: Repasser sur l'utilisateur non-root de rasa-sdk pour l'exécution.

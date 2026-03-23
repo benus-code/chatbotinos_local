@@ -54,10 +54,16 @@ def parse_faq_block(block: str) -> Dict[str, str]:
     question_match = re.search(r'Q-"(.*?)"', block)
     answer_match = re.search(r"R-(.*)", block, re.DOTALL)
 
+    answer = ""
+    if answer_match:
+        # Strip section headers (?? ...) that bleed into answers when R- is empty
+        lines = [l for l in answer_match.group(1).splitlines() if not l.strip().startswith("??")]
+        answer = "\n".join(lines).strip()
+
     return {
         "text_to_vectorize": block,
         "question": question_match.group(1) if question_match else "",
-        "answer": answer_match.group(1).strip() if answer_match else "",
+        "answer": answer,
     }
 
 

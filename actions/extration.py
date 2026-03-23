@@ -1,8 +1,8 @@
 import fitz
+import html
 import re
 import json
-import time
-from deep_translator import GoogleTranslator
+from transformers import MarianMTModel, MarianTokenizer
 
 # --- FONCTIONS DE BASE ---
 
@@ -85,13 +85,36 @@ def detecter_type_article(texte, titre):
 
 # --- TRADUCTION ---
 
-def traduire_chunk(text, translator):
-    """Traduit un texte avec gestion d'erreur."""
+_MODEL_NAME = "Helsinki-NLP/opus-mt-ru-fr"
+# None = pas encore chargé ; False = échec de chargement ; tuple = (tokenizer, model)
+_TRANSLATOR = None
+
+def _get_translator():
+    """Charge le modèle MarianMT une seule fois. Lève une exception si le chargement échoue."""
+    global _TRANSLATOR
+    if _TRANSLATOR is False:
+        raise RuntimeError("Le modèle de traduction n'a pas pu être chargé (voir erreur précédente).")
+    if _TRANSLATOR is None:
+        print(f"Chargement du modèle de traduction {_MODEL_NAME}...")
+        try:
+            tokenizer = MarianTokenizer.from_pretrained(_MODEL_NAME)
+            model = MarianMTModel.from_pretrained(_MODEL_NAME)
+            _TRANSLATOR = (tokenizer, model)
+            print("Modèle de traduction prêt.")
+        except Exception as e:
+            _TRANSLATOR = False
+            raise RuntimeError(f"Impossible de charger {_MODEL_NAME}: {e}") from e
+    return _TRANSLATOR
+
+def traduire_chunk(text, translator=None):
+    """Traduit un texte russe en français via Helsinki-NLP/opus-mt-ru-fr (offline)."""
     try:
-        # La pause est importante pour ne pas être banni par Google
-        time.sleep(0.5) 
-        return translator.translate(text)
+        tokenizer, model = _get_translator()
+        inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        translated = model.generate(**inputs)
+        return html.unescape(tokenizer.decode(translated[0], skip_special_tokens=True))
     except Exception as e:
+        print(f"[ERREUR TRADUCTION] {e}")
         return f"[Erreur traduction: {e}]"
 
 # --- UTILISATION PRINCIPALE ---
@@ -99,27 +122,24 @@ def traduire_chunk(text, translator):
 if __name__ == "__main__":
     fichier_pdf = "Polozhenie_o_studencheskom_obschezhitii.pdf"
     
-    print(f"📄 Traitement de {fichier_pdf}...")
+    print(f"Traitement de {fichier_pdf}...")
     doc = fitz.open(fichier_pdf)
     texte_brut = extraire_texte_propre(doc)
     resultats, doc_info = parser_le_document_ameliore(texte_brut)
-    
-    # CORRECTION ICI : Instanciation correcte
-    translator = GoogleTranslator(source='ru', target='fr')
-    
-    print(f"🌍 Traduction en cours ({len(resultats)} articles)...")
-    
+
+    print(f"Traduction en cours ({len(resultats)} articles)...")
+
     for article in resultats:
         # 1. Classification
         article["metadata"]["type"] = detecter_type_article(article["texte"], article["metadata"]["article_titre"])
-        
+
         # 2. Traduction
         print(f" -> Traduction article {article['metadata']['article_num']}...")
-        article["texte_fr"] = traduire_chunk(article["texte"], translator)
+        article["texte_fr"] = traduire_chunk(article["texte"])
     
     # Sauvegarde
     output = {"document_info": doc_info, "total_articles": len(resultats), "chunks": resultats}
     with open("chunks_tusur_final_fr.json", "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, indent=2)
         
-    print(f"\n✅ Terminé ! Sauvegardé dans chunks_tusur_final_fr.json")
+    print(f"\nTermine ! Sauvegarde dans chunks_tusur_final_fr.json")

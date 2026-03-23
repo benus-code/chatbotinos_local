@@ -9,26 +9,15 @@ responses:
   utter_greet:
     - text: "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
 
-  utter_faq_deterministic:
-    - text: |
-        Merci pour votre question.
-        ✅ Route A activée : je réponds en mode déterministe Rasa.
-        Pour la V1, cette réponse est un placeholder contrôlé.
-
-  utter_qdrant_simulated:
-    - text: |
-        Je n'ai pas trouvé de réponse précise à votre question dans notre base de données.
-        Pouvez-vous reformuler ou préciser votre demande ?
-
   utter_default:
     - text: |
-        Désolé, je ne suis pas certain d'avoir bien compris votre demande.
-        Pouvez-vous reformuler votre question ?
+        Désolé, je n'ai pas trouvé de réponse à votre question.
+        Pouvez-vous reformuler ?
 
-        ✅ Exemples de questions que vous pouvez poser :
+        Exemples de questions :
         - "Quels documents faut-il pour une inscription ?"
-        - "Comment contacter le support ?"
-        - "Quelles sont les étapes de la procédure ?"
+        - "Quelles sont les règles en cité universitaire ?"
+        - "Comment obtenir un visa ?"
 
 actions:
   - action_hybrid_router

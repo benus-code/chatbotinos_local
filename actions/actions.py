@@ -24,12 +24,12 @@ RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.35"))
 class ActionHybridRouter(Action):
     """Search Qdrant and return the best matching answer."""
 
+    _MAX_CONTENT_CHARS = 600
+
     def name(self) -> Text:
         return "action_hybrid_router"
 
     @staticmethod
-    _MAX_CONTENT_CHARS = 600
-
     def _format_result(r: Any) -> str:
         doc_type = r.payload.get("type", "")
         content = r.payload.get("content", "")

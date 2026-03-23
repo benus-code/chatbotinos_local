@@ -10,6 +10,7 @@ RU: Извлечение текста и разбивка PDF в зависим�
 
 from __future__ import annotations
 
+import html
 import re
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -193,7 +194,7 @@ def translate_chunks(
                 max_length=512,
             )
             translated = model.generate(**inputs)
-            chunk["content"] = tokenizer.decode(translated[0], skip_special_tokens=True)
+            chunk["content"] = html.unescape(tokenizer.decode(translated[0], skip_special_tokens=True))
         except Exception as exc:  # noqa: BLE001
             print(f"[ERREUR TRADUCTION] {exc}")
             chunk["content"] = f"[Erreur traduction: {exc}]"

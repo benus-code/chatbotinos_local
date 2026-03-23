@@ -1,4 +1,5 @@
 import fitz
+import html
 import re
 import json
 from transformers import MarianMTModel, MarianTokenizer
@@ -111,7 +112,7 @@ def traduire_chunk(text, translator=None):
         tokenizer, model = _get_translator()
         inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
         translated = model.generate(**inputs)
-        return tokenizer.decode(translated[0], skip_special_tokens=True)
+        return html.unescape(tokenizer.decode(translated[0], skip_special_tokens=True))
     except Exception as e:
         print(f"[ERREUR TRADUCTION] {e}")
         return f"[Erreur traduction: {e}]"

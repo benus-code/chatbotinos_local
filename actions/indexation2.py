@@ -21,7 +21,7 @@ def generer_points_pdf(liste_extraits, modele_embedding):
     for item in liste_extraits:
         id_unique = str(uuid.uuid4())
         # On vectorise le texte français (la langue de recherche)
-        vecteur = modele_embedding.encode(item["texte_fr"]).tolist()
+        vecteur = modele_embedding.encode(f"passage: {item['texte_fr']}").tolist()
 
         points.append(PointStruct(
             id=id_unique,
@@ -44,14 +44,15 @@ def indexer_dans_qdrant(client, nom_collection, points):
 
 if __name__ == "__main__":
     client = QdrantClient(host=os.getenv("QDRANT_HOST", "localhost"), port=6333, timeout=60)
-    model = SentenceTransformer("Qwen/Qwen3-Embedding-0.6B", trust_remote_code=True)
+    model = SentenceTransformer("intfloat/multilingual-e5-large")
 
     # 1. Vérifier si la collection existe au lieu de la recréer
-    if not client.collection_exists(collection_name=collection_name):
-        client.create_collection(
-            collection_name=collection_name,
-            vectors_config=models.VectorParams(size=1024, distance=models.Distance.COSINE)
-        )
+    if client.collection_exists(collection_name=collection_name):
+        client.delete_collection(collection_name=collection_name)
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config=models.VectorParams(size=1024, distance=models.Distance.COSINE)
+    )
 
     # 2. Charger le JSON
     fichier_source = "corpus_pdf_traduit.json"

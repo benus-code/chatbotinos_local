@@ -1,4 +1,12 @@
-"""Rasa custom actions — simple RAG lookup."""
+"""Rasa custom actions — RAG lookup with RU↔FR translation.
+
+Pipeline:
+    1. User question arrives in French.
+    2. FrToRuTranslator converts it to Russian.
+    3. The Russian question is embedded and searched in Qdrant.
+    4. Each retrieved Russian chunk is translated to French by RuFrTranslator.
+    5. The response is formatted with all unique source file names.
+"""
 
 from __future__ import annotations
 
@@ -15,61 +23,138 @@ from indexation import (
     model as embedding_model,
     search_faq,
 )
+from translator import FrToRuTranslator, RuFrTranslator
 
 LOGGER = logging.getLogger(__name__)
 
-RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.35"))
+# Score threshold: results below this are discarded (env-overridable).
+RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.55"))
 
+# ---------------------------------------------------------------------------
+# Module-level translator singletons (lazy-initialised).
+# Rasa instantiates a new Action object per request; keeping the translators
+# at module level means the heavy MarianMT models are loaded only once.
+# ---------------------------------------------------------------------------
+
+_ru_fr_translator: Optional[RuFrTranslator] = None
+_fr_ru_translator: Optional[FrToRuTranslator] = None
+
+
+def _get_ru_fr() -> RuFrTranslator:
+    global _ru_fr_translator
+    if _ru_fr_translator is None:
+        _ru_fr_translator = RuFrTranslator()
+    return _ru_fr_translator
+
+
+def _get_fr_ru() -> FrToRuTranslator:
+    global _fr_ru_translator
+    if _fr_ru_translator is None:
+        _fr_ru_translator = FrToRuTranslator()
+    return _fr_ru_translator
+
+
+# ---------------------------------------------------------------------------
+# Action
+# ---------------------------------------------------------------------------
 
 class ActionHybridRouter(Action):
-    """Search Qdrant and return the best matching answer."""
+    """Translate the user's French question to Russian, search Qdrant, and
+    return the results translated back to French with source attribution."""
 
     def name(self) -> Text:
         return "action_hybrid_router"
 
+    # ------------------------------------------------------------------
+    # Response formatting
+    # ------------------------------------------------------------------
+
     @staticmethod
-    def _format_result(r: Any) -> str:
-        doc_type = r.payload.get("type", "")
-        content = r.payload.get("content", "")
+    def _format_translated_results(
+        translated_chunks: List[str],
+        sources: List[str],
+    ) -> str:
+        """Build the final French response with source attribution."""
+        body = "\n\n".join(chunk for chunk in translated_chunks if chunk.strip())
 
-        if doc_type == "faq":
-            source = r.payload.get("source_file", "FAQ")
-            return f"{content}\n\n_Source : {source}_"
+        if not sources:
+            return f"D'après les documents consultés :\n{body}"
 
-        source = r.payload.get("source", "corpus")
-        page = r.payload.get("page")
-        source_label = f"{source} — p. {page}" if page else source
-        return f"{content}\n\n_Source : {source_label}_"
+        if len(sources) == 1:
+            source_block = f"Source : {sources[0]}"
+        else:
+            source_lines = "\n".join(f"- {s}" for s in sources)
+            source_block = f"Sources :\n{source_lines}"
 
-    def _rag_lookup(self, user_text: str) -> Optional[str]:
+        return f"D'après les documents consultés :\n{body}\n\n{source_block}"
+
+    # ------------------------------------------------------------------
+    # RAG lookup
+    # ------------------------------------------------------------------
+
+    def _rag_lookup(self, ru_question: str) -> Optional[str]:
+        """Search Qdrant with a Russian question and return a French response.
+
+        Returns None when no result meets the score threshold so the caller
+        can fall back to ``utter_default``.
+        """
         try:
             results = search_faq(
-                qdrant_client, collection_name, embedding_model, user_text, limit=3
+                qdrant_client,
+                collection_name,
+                embedding_model,
+                ru_question,
+                limit=3,
             )
             if not results:
                 return None
 
-            def _is_useful(r: Any) -> bool:
-                content = r.payload.get("content", "").strip()
-                if len(content) < 30:
-                    return False
-                if r.payload.get("type") == "faq":
-                    answer = content.split("Réponse:", 1)[-1].strip() if "Réponse:" in content else ""
-                    return len(answer) > 5 and not answer.startswith("??")
-                return True
-
-            usable = [r for r in results if r.score >= RAG_MIN_SCORE and _is_useful(r)]
+            usable = [r for r in results if r.score >= RAG_MIN_SCORE]
             if not usable:
-                LOGGER.info("No usable result above score %.2f", RAG_MIN_SCORE)
+                LOGGER.info(
+                    "No result above score threshold %.2f (best was %.4f).",
+                    RAG_MIN_SCORE,
+                    results[0].score,
+                )
                 return None
 
-            top = usable[0]
-            LOGGER.info("RAG result: score=%.4f type=%s", top.score, top.payload.get("type", "?"))
-            return self._format_result(top)
+            translated_chunks: List[str] = []
+            sources: List[str] = []
+
+            for r in usable:
+                LOGGER.info(
+                    "RAG hit: score=%.4f type=%s",
+                    r.score,
+                    r.payload.get("type", "?"),
+                )
+                content_ru = r.payload.get("content", "").strip()
+                if not content_ru:
+                    continue
+
+                content_fr = _get_ru_fr().translate(content_ru)
+                translated_chunks.append(content_fr)
+
+                # Support both payload key conventions used in the project.
+                source = (
+                    r.payload.get("source")
+                    or r.payload.get("source_file")
+                    or ""
+                )
+                if source and source not in sources:
+                    sources.append(source)
+
+            if not translated_chunks:
+                return None
+
+            return self._format_translated_results(translated_chunks, sources)
 
         except Exception:
             LOGGER.exception("Qdrant lookup failed")
             return None
+
+    # ------------------------------------------------------------------
+    # Rasa entry point
+    # ------------------------------------------------------------------
 
     def run(
         self,
@@ -78,12 +163,18 @@ class ActionHybridRouter(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         del domain
-        user_text = tracker.latest_message.get("text", "")
-        LOGGER.info("ActionRAG triggered for: %s", user_text)
 
-        answer = self._rag_lookup(user_text)
+        user_text = tracker.latest_message.get("text", "")
+        LOGGER.info("ActionHybridRouter triggered: %r", user_text)
+
+        # Translate the French question to Russian before embedding.
+        ru_question = _get_fr_ru().translate(user_text)
+        LOGGER.info("Question translated to RU: %r", ru_question)
+
+        answer = self._rag_lookup(ru_question)
         if answer:
             dispatcher.utter_message(text=answer)
         else:
             dispatcher.utter_message(response="utter_default")
+
         return []

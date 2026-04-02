@@ -15,10 +15,22 @@ from indexation import (
     model as embedding_model,
     search_faq,
 )
+from translator import RuFrTranslator
 
 LOGGER = logging.getLogger(__name__)
 
 RAG_MIN_SCORE = float(os.getenv("RAG_MIN_SCORE", "0.35"))
+
+# Singleton du traducteur RU→FR — instancié à la première utilisation.
+# Синглтон переводчика RU→FR — инициализируется при первом использовании.
+_ru_fr_translator: Optional[RuFrTranslator] = None
+
+
+def _get_ru_fr() -> RuFrTranslator:
+    global _ru_fr_translator
+    if _ru_fr_translator is None:
+        _ru_fr_translator = RuFrTranslator()
+    return _ru_fr_translator
 
 
 class ActionHybridRouter(Action):
@@ -39,13 +51,18 @@ class ActionHybridRouter(Action):
             content = content[: ActionHybridRouter._MAX_CONTENT_CHARS].rsplit(" ", 1)[0] + "…"
 
         if doc_type == "faq":
+            # FAQ indexée en français — aucune traduction nécessaire.
+            # FAQ индексируется на французском — перевод не нужен.
             source = r.payload.get("source_file", "FAQ")
             return f"{content}\n\n_Source : {source}_"
 
+        # Chunk PDF en russe — traduit en français avant affichage.
+        # PDF-чанк на русском — переводим на французский перед отображением.
+        content_fr = _get_ru_fr().translate(content)
         source = r.payload.get("source", "corpus")
         page = r.payload.get("page")
         source_label = f"{source} — p. {page}" if page else source
-        return f"{content}\n\n_Source : {source_label}_"
+        return f"{content_fr}\n\n_Source : {source_label}_"
 
     def _rag_lookup(self, user_text: str) -> Optional[str]:
         try:

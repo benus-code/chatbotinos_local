@@ -25,7 +25,7 @@ services:
       - ./actions:/app/actions
     depends_on:
       - qdrant
-    mem_limit: 1536m
+    mem_limit: 3g
     restart: unless-stopped
 
   rasa:

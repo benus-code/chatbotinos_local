@@ -268,7 +268,7 @@ def translate_chunks(
 
 def extract_and_chunk_pdf(
     pdf_path: str,
-    translate: bool = True,
+    translate: bool = False,  # Approche C : on stocke le russe natif, traduction à l'affichage. / Подход C: храним русский текст, переводим при отображении.
     chunk_size: int = 300,
     overlap: int = 50,
 ) -> List[Dict]:

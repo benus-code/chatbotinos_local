@@ -24,7 +24,11 @@ LOGGER = logging.getLogger(__name__)
 # Configuration de la connexion Qdrant et du modèle d'embedding.
 # Конфигурация подключения к Qdrant и модели эмбеддингов.
 client = QdrantClient(host=os.getenv("QDRANT_HOST", "qdrant"), port=6333, timeout=60)
-model = SentenceTransformer("Qwen/Qwen3-Embedding-0.6B", trust_remote_code=True)
+# Modèle multilingue : projette le français et le russe dans le même espace vectoriel.
+# Une question en français retrouve directement un document en russe sans traduction.
+# Многоязычная модель: проецирует французский и русский в одно векторное пространство.
+# Французский запрос находит русские документы напрямую, без перевода.
+model = SentenceTransformer("intfloat/multilingual-e5-large")
 collection_name = "FAQ_Multilingue"
 
 
@@ -81,7 +85,9 @@ def build_qdrant_points(
 
     for item in faq_items:
         unique_id = str(uuid.uuid4())
-        text_to_vectorize = f"Question: {item['question']} Réponse: {item['answer']}"
+        # Préfixe "passage: " requis par multilingual-e5-large pour l'indexation de documents.
+        # Префикс "passage: " обязателен для multilingual-e5-large при индексации документов.
+        text_to_vectorize = f"passage: Question: {item['question']} Réponse: {item['answer']}"
         vector = embedding_model.encode(text_to_vectorize).tolist()
 
         points.append(
@@ -139,7 +145,9 @@ def search_faq(
     if not user_question:
         return []
 
-    question_vector = embedding_model.encode(user_question).tolist()
+    # Préfixe "query: " pour les requêtes utilisateur — asymétrie E5 obligatoire.
+    # Префикс "query: " для запросов пользователя — асимметрия E5 обязательна.
+    question_vector = embedding_model.encode(f"query: {user_question}").tolist()
     result = qdrant_client.query_points(
         collection_name=collection,
         query=question_vector,
@@ -161,7 +169,9 @@ def build_qdrant_points_pdf(
 
     for chunk in chunks:
         unique_id = str(uuid.uuid4())
-        vector = embedding_model.encode(chunk["content"]).tolist()
+        # Préfixe "passage: " requis pour l'indexation des chunks PDF en russe.
+        # Префикс "passage: " обязателен при индексации PDF-чанков на русском языке.
+        vector = embedding_model.encode(f"passage: {chunk['content']}").tolist()
 
         payload: Dict[str, Any] = {
             "content": chunk["content"],
@@ -208,14 +218,16 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     try:
-        # FR: Crée la collection si elle n'existe pas.
-        # RU: Создает коллекцию, если она не существует.
-        if not client.collection_exists(collection_name=collection_name):
-            client.create_collection(
-                collection_name=collection_name,
-                vectors_config=models.VectorParams(size=1024, distance=models.Distance.COSINE),
-            )
-            LOGGER.info("Collection '%s' created.", collection_name)
+        # Recrée la collection pour garantir la cohérence avec le nouveau modèle d'embedding.
+        # Пересоздаём коллекцию, чтобы гарантировать совместимость с новой моделью эмбеддингов.
+        if client.collection_exists(collection_name=collection_name):
+            client.delete_collection(collection_name=collection_name)
+            LOGGER.info("Collection '%s' supprimée pour recréation.", collection_name)
+        client.create_collection(
+            collection_name=collection_name,
+            vectors_config=models.VectorParams(size=1024, distance=models.Distance.COSINE),
+        )
+        LOGGER.info("Collection '%s' créée.", collection_name)
 
         source_file_name = "FAQ.txt"
         content_blocks = load_and_split_faq(source_file_name)

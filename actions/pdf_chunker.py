@@ -292,3 +292,53 @@ def extract_and_chunk_pdf(
         chunks = translate_chunks(chunks)
 
     return chunks
+
+
+if __name__ == "__main__":
+    import logging
+    import os
+    import sys
+
+    from qdrant_client import QdrantClient
+    from sentence_transformers import SentenceTransformer
+
+    from indexation import (
+        build_qdrant_points_pdf,
+        replace_pdf_source_points,
+        collection_name,
+    )
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    LOGGER = logging.getLogger(__name__)
+
+    # Fichier PDF à indexer — situé dans le même répertoire que ce script.
+    # PDF-файл для индексации — находится в той же папке, что и этот скрипт.
+    _here = Path(__file__).parent
+    pdf_filename = "Polozhenie_o_studencheskom_obschezhitii.pdf"
+    pdf_path = _here / pdf_filename
+
+    if not pdf_path.exists():
+        LOGGER.error("PDF non trouvé : %s", pdf_path)
+        sys.exit(1)
+
+    LOGGER.info("Extraction et découpage du PDF : %s", pdf_filename)
+    chunks = extract_and_chunk_pdf(str(pdf_path), translate=False)
+    LOGGER.info("%d chunks extraits.", len(chunks))
+
+    qdrant_host = os.getenv("QDRANT_HOST", "qdrant")
+    qdrant_client = QdrantClient(host=qdrant_host, port=6333, timeout=60)
+
+    # Modèle multilingue partagé avec indexation.py.
+    # Многоязычная модель, общая с indexation.py.
+    embedding_model = SentenceTransformer("intfloat/multilingual-e5-large")
+
+    points = build_qdrant_points_pdf(chunks, embedding_model)
+    LOGGER.info("%d points Qdrant construits.", len(points))
+
+    replace_pdf_source_points(
+        qdrant_client=qdrant_client,
+        collection=collection_name,
+        source_name=pdf_filename,
+        new_points=points,
+    )
+    LOGGER.info("PDF '%s' indexé dans la collection '%s'.", pdf_filename, collection_name)

@@ -53,104 +53,78 @@ def detect_doc_type(text: str) -> str:
     return "guide"
 
 
-_MAX_ARTICLE_WORDS = 200  # Articles > 200 mots sont découpés en sous-chunks
+_MAX_SECTION_WORDS = 500  # Section > 500 mots → découpe en deux demi-sections
 
 
-def _split_article_into_subchunks(article: Dict) -> List[Dict]:
-    """Split an oversized article into sentence-based sub-chunks.
+def chunk_by_sections(text: str, source: str) -> List[Dict]:
+    """Regroupe tous les sous-articles d'un même article principal en un seul chunk.
 
-    FR: Découpe un article trop long en sous-chunks basés sur les phrases.
-    RU: Разбивает слишком длинную статью на подчанки по предложениям.
+    FR: Au lieu de 1 chunk par sous-article (1.1, 1.2...), produit 1 chunk par
+    article principal (tout l'Article 1, tout l'Article 2, etc.).
+    Chaque chunk est ainsi auto-suffisant et contient le contexte complet.
+    RU: Вместо одного чанка на подстатью (1.1, 1.2...) создаёт один чанк
+    на главную статью (вся Статья 1, вся Статья 2 и т.д.).
+    Каждый чанк самодостаточен и содержит полный контекст.
     """
-    words = article["content"].split()
-    if len(words) <= _MAX_ARTICLE_WORDS:
-        return [article]
-
-    # Split on sentence boundaries (". ", "; ", ": ")
-    sentences = re.split(r"(?<=[.;:])\s+", article["content"])
-    subchunks: List[Dict] = []
-    current_words: List[str] = []
-    sub_idx = 1
-
-    for sentence in sentences:
-        sentence_words = sentence.split()
-        if current_words and len(current_words) + len(sentence_words) > _MAX_ARTICLE_WORDS:
-            subchunks.append({
-                **article,
-                "content": " ".join(current_words),
-                "article_num": f"{article['article_num']}.{sub_idx}",
-            })
-            sub_idx += 1
-            current_words = sentence_words
-        else:
-            current_words.extend(sentence_words)
-
-    if current_words:
-        subchunks.append({
-            **article,
-            "content": " ".join(current_words),
-            "article_num": f"{article['article_num']}.{sub_idx}",
-        })
-
-    return subchunks
-
-
-def chunk_by_articles(text: str, source: str) -> List[Dict]:
-    """Split text into numbered article chunks (for legal/regulatory docs).
-
-    Articles longer than _MAX_ARTICLE_WORDS are further split into
-    sentence-based sub-chunks to improve translation quality and
-    retrieval precision.
-
-    FR: Découpe par articles numérotés (ex. 3.1., 3.2.) pour docs officiels.
-        Les articles > 200 mots sont découpés en sous-chunks par phrase.
-    RU: Разбивает по нумерованным статьям для официальных документов.
-        Статьи > 200 слов дополнительно разбиваются по предложениям.
-    """
-    raw_chunks: List[Dict] = []
-    current_article: Optional[Dict] = None
-    current_section: Optional[Dict] = None
+    sections: Dict[str, Dict] = {}  # section_num → {"titre": ..., "content": ..., "order": ...}
+    current_section_num: Optional[str] = None
+    order = 0
 
     for line in text.split("\n"):
         line = line.strip()
         if not line:
             continue
 
+        # En-tête de section principale : "2. Права и обязанности..."
         sec_match = SECTION_PATTERN.match(line)
         if sec_match and not ARTICLE_PATTERN.match(line):
-            current_section = {"num": sec_match.group(1), "titre": sec_match.group(2)}
+            current_section_num = sec_match.group(1)
+            if current_section_num not in sections:
+                sections[current_section_num] = {
+                    "titre": sec_match.group(2),
+                    "content": "",
+                    "order": order,
+                }
+                order += 1
             continue
 
+        # Sous-article : "2.1. ..." → rattaché à la section parente
         art_match = ARTICLE_PATTERN.match(line)
         if art_match:
-            if current_article:
-                current_article["content"] = re.sub(
-                    r"\s+", " ", current_article["content"]
-                ).strip()
-                raw_chunks.append(current_article)
+            parent = art_match.group(1).split(".")[0]
+            if parent not in sections:
+                sections[parent] = {"titre": "", "content": "", "order": order}
+                order += 1
+            sections[parent]["content"] += " " + line
+            current_section_num = parent
+        elif current_section_num and current_section_num in sections:
+            sections[current_section_num]["content"] += " " + line
 
-            current_article = {
-                "content": line,
-                "source": source,
-                "page": None,
-                "type": "pdf",
-                "article_num": art_match.group(1),
-                "section_num": current_section["num"] if current_section else "",
-                "section_titre": current_section["titre"] if current_section else "",
-            }
-        elif current_article:
-            current_article["content"] += " " + line
-
-    if current_article:
-        current_article["content"] = re.sub(
-            r"\s+", " ", current_article["content"]
-        ).strip()
-        raw_chunks.append(current_article)
-
-    # Split oversized articles into sentence-based sub-chunks
+    # Construit les chunks finaux, un par section principale
+    # Формирует финальные чанки — по одному на каждую главную секцию
     chunks: List[Dict] = []
-    for article in raw_chunks:
-        chunks.extend(_split_article_into_subchunks(article))
+    for sec_num, sec in sorted(sections.items(), key=lambda x: x[1]["order"]):
+        content = re.sub(r"\s+", " ", sec["content"]).strip()
+        if not content or len(content.split()) < 10:
+            continue
+
+        base_chunk = {
+            "source": source,
+            "page": None,
+            "type": "pdf",
+            "section_num": sec_num,
+            "section_titre": sec["titre"],
+        }
+
+        words = content.split()
+        if len(words) <= _MAX_SECTION_WORDS:
+            chunks.append({**base_chunk, "content": content})
+        else:
+            # Coupe en deux moitiés pour les sections très longues
+            # Разрезаем пополам для очень длинных секций
+            mid = len(words) // 2
+            chunks.append({**base_chunk, "content": " ".join(words[:mid]), "section_num": f"{sec_num}a"})
+            chunks.append({**base_chunk, "content": " ".join(words[mid:]), "section_num": f"{sec_num}b"})
 
     return chunks
 
@@ -284,7 +258,9 @@ def extract_and_chunk_pdf(
     doc_type = detect_doc_type(text)
 
     if doc_type == "legal":
-        chunks = chunk_by_articles(text, source)
+        # chunk_by_sections : 1 chunk par article principal (tout l'art. 2 ensemble).
+        # chunk_by_sections: 1 chunk per main article (all of art. 2 together).
+        chunks = chunk_by_sections(text, source)
     else:
         chunks = chunk_by_tokens(text, source, chunk_size=chunk_size, overlap=overlap)
 

@@ -145,19 +145,18 @@ def evaluer_question(q: Dict) -> Dict:
     Même logique que actions.py : recherche séparée FAQ et PDF, puis sélection du meilleur.
     Та же логика, что в actions.py: раздельный поиск FAQ и PDF, затем выбор лучшего.
     """
-    faq_results = search_by_type(client, collection_name, model, q["question"], "faq", limit=5)
+    # Recherche uniquement dans le PDF — même comportement que actions.py en mode test.
+    # Поиск только по PDF — то же поведение, что и actions.py в тестовом режиме.
     pdf_results = search_by_type(client, collection_name, model, q["question"], "pdf", limit=5)
 
-    best_faq = next((r for r in faq_results if r.score >= RAG_MIN_SCORE and _is_useful(r)), None)
     best_pdf = next((r for r in pdf_results if r.score >= RAG_MIN_SCORE and _is_useful(r)), None)
 
-    if not best_faq and not best_pdf:
-        all_results = faq_results + pdf_results
+    if not best_pdf:
         return {
             "id": q["id"],
             "question": q["question"],
             "repondu": False,
-            "score_top": round(all_results[0].score, 4) if all_results else 0.0,
+            "score_top": round(pdf_results[0].score, 4) if pdf_results else 0.0,
             "source_retournee": None,
             "source_correcte": q["source_attendue"] is None,
             "longueur_reponse": 0,
@@ -165,10 +164,7 @@ def evaluer_question(q: Dict) -> Dict:
             "contenu_tronque": "",
         }
 
-    if best_pdf and best_faq:
-        top = best_pdf if best_pdf.score >= best_faq.score - 0.10 else best_faq
-    else:
-        top = best_pdf or best_faq
+    top = best_pdf
 
     score = round(top.score, 4)
     source = _source_from_payload(top.payload)

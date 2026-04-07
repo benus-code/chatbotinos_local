@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from indexation import client, collection_name, model, search_faq
+from indexation import client, collection_name, model, search_by_type
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -142,21 +142,22 @@ def _is_useful(r: Any) -> bool:
 
 def evaluer_question(q: Dict) -> Dict:
     """Interroge Qdrant et évalue la qualité de la réponse.
-    Applique le même filtre _is_useful que actions.py pour refléter le comportement réel.
-    Применяет тот же фильтр _is_useful, что и actions.py, для точного отражения поведения.
+    Même logique que actions.py : recherche séparée FAQ et PDF, puis sélection du meilleur.
+    Та же логика, что в actions.py: раздельный поиск FAQ и PDF, затем выбор лучшего.
     """
-    # limit=10 pour ne pas manquer les chunks PDF enfouis derrière des FAQ vides.
-    # limit=10 чтобы не пропустить PDF-чанки, скрытые за пустыми FAQ-записями.
-    results = search_faq(client, collection_name, model, q["question"], limit=10)
+    faq_results = search_by_type(client, collection_name, model, q["question"], "faq", limit=5)
+    pdf_results = search_by_type(client, collection_name, model, q["question"], "pdf", limit=5)
 
-    usable = [r for r in results if r.score >= RAG_MIN_SCORE and _is_useful(r)]
+    best_faq = next((r for r in faq_results if r.score >= RAG_MIN_SCORE and _is_useful(r)), None)
+    best_pdf = next((r for r in pdf_results if r.score >= RAG_MIN_SCORE and _is_useful(r)), None)
 
-    if not usable:
+    if not best_faq and not best_pdf:
+        all_results = faq_results + pdf_results
         return {
             "id": q["id"],
             "question": q["question"],
             "repondu": False,
-            "score_top": round(results[0].score, 4) if results else 0.0,
+            "score_top": round(all_results[0].score, 4) if all_results else 0.0,
             "source_retournee": None,
             "source_correcte": q["source_attendue"] is None,
             "longueur_reponse": 0,
@@ -164,7 +165,11 @@ def evaluer_question(q: Dict) -> Dict:
             "contenu_tronque": "",
         }
 
-    top = usable[0]
+    if best_pdf and best_faq:
+        top = best_pdf if best_pdf.score >= best_faq.score - 0.10 else best_faq
+    else:
+        top = best_pdf or best_faq
+
     score = round(top.score, 4)
     source = _source_from_payload(top.payload)
     content = top.payload.get("content", "")

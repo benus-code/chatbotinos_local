@@ -14,6 +14,7 @@ from indexation import (
     client as qdrant_client,
     model as embedding_model,
     search_faq,
+    search_by_type,
 )
 from translator import RuFrTranslator
 
@@ -66,11 +67,16 @@ class ActionHybridRouter(Action):
 
     def _rag_lookup(self, user_text: str) -> Optional[str]:
         try:
-            results = search_faq(
-                qdrant_client, collection_name, embedding_model, user_text, limit=10
+            # Recherche séparée FAQ et PDF pour éviter que le français de la FAQ
+            # n'écrase systématiquement les chunks russes du PDF (biais même-langue).
+            # Раздельный поиск по FAQ и PDF, чтобы французские FAQ-записи не вытесняли
+            # русские PDF-чанки из-за преимущества одного языка.
+            faq_results = search_by_type(
+                qdrant_client, collection_name, embedding_model, user_text, "faq", limit=5
             )
-            if not results:
-                return None
+            pdf_results = search_by_type(
+                qdrant_client, collection_name, embedding_model, user_text, "pdf", limit=5
+            )
 
             def _is_useful(r: Any) -> bool:
                 content = r.payload.get("content", "").strip()
@@ -81,12 +87,22 @@ class ActionHybridRouter(Action):
                     return len(answer) > 5 and not answer.startswith("??")
                 return True
 
-            usable = [r for r in results if r.score >= RAG_MIN_SCORE and _is_useful(r)]
-            if not usable:
-                LOGGER.info("No usable result above score %.2f", RAG_MIN_SCORE)
+            best_faq = next((r for r in faq_results if r.score >= RAG_MIN_SCORE and _is_useful(r)), None)
+            best_pdf = next((r for r in pdf_results if r.score >= RAG_MIN_SCORE and _is_useful(r)), None)
+
+            if not best_faq and not best_pdf:
+                LOGGER.info("Aucun résultat utile au-dessus du seuil %.2f", RAG_MIN_SCORE)
                 return None
 
-            top = usable[0]
+            # Choisit le meilleur résultat entre FAQ et PDF.
+            # Si le PDF est dans les 10% du score FAQ, on préfère le PDF (plus spécifique).
+            # Выбирает лучший результат между FAQ и PDF.
+            # Если PDF в пределах 10% от FAQ, предпочитаем PDF (он более специфичен).
+            if best_pdf and best_faq:
+                top = best_pdf if best_pdf.score >= best_faq.score - 0.10 else best_faq
+            else:
+                top = best_pdf or best_faq
+
             LOGGER.info("RAG result: score=%.4f type=%s", top.score, top.payload.get("type", "?"))
             return self._format_result(top)
 

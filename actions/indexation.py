@@ -143,10 +143,10 @@ def search_faq(
     user_question: str,
     limit: int = 3,
 ) -> List[Any]:
-    """Search semantic FAQ matches in Qdrant.
+    """Search semantic FAQ matches in Qdrant (all types).
 
-    FR: Recherche les meilleures réponses FAQ selon la similarité vectorielle.
-    RU: Ищет лучшие ответы FAQ по векторному сходству.
+    FR: Recherche les meilleures réponses selon la similarité vectorielle, tous types confondus.
+    RU: Ищет лучшие ответы по векторному сходству, без фильтрации по типу.
     """
     if not user_question:
         return []
@@ -157,6 +157,43 @@ def search_faq(
     result = qdrant_client.query_points(
         collection_name=collection,
         query=question_vector,
+        limit=limit,
+    )
+    return result.points
+
+
+def search_by_type(
+    qdrant_client: QdrantClient,
+    collection: str,
+    embedding_model: SentenceTransformer,
+    user_question: str,
+    doc_type: str,
+    limit: int = 3,
+) -> List[Any]:
+    """Search semantic matches filtered by document type ('faq' or 'pdf').
+
+    FR: Recherche dans Qdrant en filtrant par type de document.
+    Permet de chercher FAQ et PDF séparément pour éviter que le français
+    de la FAQ n'écrase systématiquement les chunks russes du PDF.
+    RU: Поиск в Qdrant с фильтрацией по типу документа.
+    Позволяет искать FAQ и PDF раздельно, чтобы французские FAQ-записи
+    не вытесняли русские PDF-чанки.
+    """
+    if not user_question:
+        return []
+
+    question_vector = embedding_model.encode(f"query: {user_question}").tolist()
+    result = qdrant_client.query_points(
+        collection_name=collection,
+        query=question_vector,
+        query_filter=models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="type",
+                    match=models.MatchValue(value=doc_type),
+                )
+            ]
+        ),
         limit=limit,
     )
     return result.points

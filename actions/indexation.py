@@ -84,6 +84,12 @@ def build_qdrant_points(
     points: List[PointStruct] = []
 
     for item in faq_items:
+        # N'indexe pas les entrées FAQ sans réponse — elles polluent les résultats PDF.
+        # Не индексируем FAQ-записи без ответа — они засоряют результаты PDF.
+        if len(item.get("answer", "").strip()) < 10:
+            LOGGER.debug("FAQ ignorée (réponse vide) : %s", item.get("question", "")[:60])
+            continue
+
         unique_id = str(uuid.uuid4())
         # Préfixe "passage: " requis par multilingual-e5-large pour l'indexation de documents.
         # Префикс "passage: " обязателен для multilingual-e5-large при индексации документов.

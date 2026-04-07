@@ -129,28 +129,46 @@ def _check_mots_cles(content: str, mots_cles: List[str]) -> float:
     return round(trouvés / len(mots_cles), 2)
 
 
-def evaluer_question(q: Dict) -> Dict:
-    """Interroge Qdrant et évalue la qualité de la réponse."""
-    results = search_faq(client, collection_name, model, q["question"], limit=3)
+def _is_useful(r: Any) -> bool:
+    """Même filtre que actions.py — élimine les FAQ avec réponse vide."""
+    content = r.payload.get("content", "").strip()
+    if len(content) < 30:
+        return False
+    if r.payload.get("type") == "faq":
+        answer = content.split("Réponse:", 1)[-1].strip() if "Réponse:" in content else ""
+        return len(answer) > 5 and not answer.startswith("??")
+    return True
 
-    if not results:
+
+def evaluer_question(q: Dict) -> Dict:
+    """Interroge Qdrant et évalue la qualité de la réponse.
+    Applique le même filtre _is_useful que actions.py pour refléter le comportement réel.
+    Применяет тот же фильтр _is_useful, что и actions.py, для точного отражения поведения.
+    """
+    # limit=10 pour ne pas manquer les chunks PDF enfouis derrière des FAQ vides.
+    # limit=10 чтобы не пропустить PDF-чанки, скрытые за пустыми FAQ-записями.
+    results = search_faq(client, collection_name, model, q["question"], limit=10)
+
+    usable = [r for r in results if r.score >= RAG_MIN_SCORE and _is_useful(r)]
+
+    if not usable:
         return {
             "id": q["id"],
             "question": q["question"],
             "repondu": False,
-            "score_top": 0.0,
+            "score_top": round(results[0].score, 4) if results else 0.0,
             "source_retournee": None,
-            "source_correcte": q["source_attendue"] is None,  # True si hors-sujet attendu
+            "source_correcte": q["source_attendue"] is None,
             "longueur_reponse": 0,
             "mots_cles_ratio": 0.0,
             "contenu_tronque": "",
         }
 
-    top = results[0]
+    top = usable[0]
     score = round(top.score, 4)
     source = _source_from_payload(top.payload)
     content = top.payload.get("content", "")
-    repondu = score >= RAG_MIN_SCORE
+    repondu = True
 
     source_correcte: bool
     if q["source_attendue"] is None:

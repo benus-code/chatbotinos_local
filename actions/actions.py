@@ -67,7 +67,7 @@ class ActionHybridRouter(Action):
     def _rag_lookup(self, user_text: str) -> Optional[str]:
         try:
             results = search_faq(
-                qdrant_client, collection_name, embedding_model, user_text, limit=3
+                qdrant_client, collection_name, embedding_model, user_text, limit=10
             )
             if not results:
                 return None

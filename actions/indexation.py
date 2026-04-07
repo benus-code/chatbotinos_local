@@ -229,8 +229,11 @@ if __name__ == "__main__":
         )
         LOGGER.info("Collection '%s' créée.", collection_name)
 
+        # Chemin absolu basé sur l'emplacement du script — indépendant du répertoire courant.
+        # Абсолютный путь на основе расположения скрипта — независимо от рабочей директории.
+        _here = Path(__file__).parent
         source_file_name = "FAQ.txt"
-        content_blocks = load_and_split_faq(source_file_name)
+        content_blocks = load_and_split_faq(str(_here / source_file_name))
         structured_faq = [parse_faq_block(block) for block in content_blocks]
 
         points = build_qdrant_points(structured_faq, model, source_file_name)

@@ -286,14 +286,25 @@ if __name__ == "__main__":
             source_file_name=source_file_name,
             new_points=points,
         )
-        LOGGER.info("FAQ data successfully indexed into '%s'.", collection_name)
+        LOGGER.info("FAQ indexée dans '%s'.", collection_name)
 
-        test_question = "Je veux savoir comment avoir l'invitation"
-        search_results = search_faq(client, collection_name, model, test_question)
-
-        LOGGER.info("Search test for question: %s", test_question)
-        for rank, result_item in enumerate(search_results, start=1):
-            LOGGER.info("Rank %d (score %.4f): %s", rank, result_item.score, result_item.payload.get("content"))
+        # Indexation du PDF immédiatement après — la collection vient d'être recréée.
+        # Индексация PDF сразу после — коллекция только что была пересоздана.
+        pdf_filename = "Polozhenie_o_studencheskom_obschezhitii.pdf"
+        pdf_path = _here / pdf_filename
+        if pdf_path.exists():
+            from pdf_chunker import extract_and_chunk_pdf
+            chunks = extract_and_chunk_pdf(str(pdf_path), translate=False)
+            pdf_points = build_qdrant_points_pdf(chunks, model)
+            replace_pdf_source_points(
+                qdrant_client=client,
+                collection=collection_name,
+                source_name=pdf_filename,
+                new_points=pdf_points,
+            )
+            LOGGER.info("PDF '%s' indexé : %d chunks.", pdf_filename, len(pdf_points))
+        else:
+            LOGGER.warning("PDF non trouvé : %s — ignoré.", pdf_path)
 
     except Exception:
         LOGGER.exception("Indexation script failed.")
